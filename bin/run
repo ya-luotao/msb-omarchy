@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Start (or restart) the Omarchy sandbox with a virtio-gpu scanout and VNC on 127.0.0.1:5900.
+set -euo pipefail
+MSB=${MSB:-$HOME/.microsandbox/bin/msb}
+NAME=${NAME:-omarchy}
+TAG=${TAG:-msb-omarchy:dev}
+export MSB_GPU=${MSB_GPU:-1}
+export MSB_GPU_DISPLAY=${MSB_GPU_DISPLAY:-1920x1080}
+exec "$MSB" run --name "$NAME" --replace --init auto \
+  --cpus "${CPUS:-4}" --memory "${MEMORY:-4G}" --root-disk "${ROOT_DISK:-16G}" \
+  -p 127.0.0.1:5900:5900 "$@" "$TAG" -- sleep infinity

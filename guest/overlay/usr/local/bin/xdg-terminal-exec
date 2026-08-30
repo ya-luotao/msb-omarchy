@@ -1,0 +1,3 @@
+#!/bin/sh
+# xdg-terminal-exec is AUR-only; Omarchy's default terminal is foot.
+exec foot "$@"

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Build the Omarchy guest image with Docker (arm64) and load it into microsandbox.
+#   MSB_OMARCHY_SRC   omarchy checkout (default ~/.cache/msb-omarchy/omarchy)
+#   MSB_OMARCHY_PKGS  omarchy-pkgs checkout with pkgbuilds/ (default ~/.cache/msb-omarchy/omarchy-pkgs)
+#   MSB               msb binary (default ~/.microsandbox/bin/msb)
+set -euo pipefail
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+SRC=${MSB_OMARCHY_SRC:-$HOME/.cache/msb-omarchy/omarchy}
+PKGS=${MSB_OMARCHY_PKGS:-$HOME/.cache/msb-omarchy/omarchy-pkgs}
+MSB=${MSB:-$HOME/.microsandbox/bin/msb}
+TAG=${TAG:-msb-omarchy:dev}
+
+stage=$ROOT/guest/build
+rm -rf "$stage" && mkdir -p "$stage/pkgbuilds"
+rsync -a --exclude .git "$SRC/" "$stage/omarchy/"
+rsync -a "$PKGS/pkgbuilds/omarchy" "$PKGS/pkgbuilds/omarchy-settings" "$stage/pkgbuilds/"
+echo "omarchy source: $(git -C "$SRC" rev-parse --short HEAD) ($(cat "$SRC/version"))"
+
+docker build --platform linux/arm64 -t "$TAG" "$ROOT/guest"
+docker save "$TAG" -o "$stage/image.tar"
+"$MSB" load --input "$stage/image.tar"

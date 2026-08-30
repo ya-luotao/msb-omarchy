@@ -5,3 +5,4 @@
 rootfs/
 build/
 test-runs/
+guest/build/
