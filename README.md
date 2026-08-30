@@ -61,6 +61,7 @@ This repo holds the guest image build, the run scripts, the docs, and the findin
 - Hyprland cannot run with zero DRM devices: aquamarine's headless backend has no allocator (`drmFD() == -1`), so a virtio-gpu node is mandatory even for software rendering. Upstream issue [#7917](https://github.com/hyprwm/Hyprland/issues/7917) is closed as not planned.
 - Software rendering over virtio-gpu KMS is the proven path (it is what Hyprland's own CI does). Venus/virgl acceleration on Apple Silicon is not proven; the plan does not depend on it.
 - omarchy-pkgs publishes no aarch64 database; roughly 17 of 148 base packages must be built from source (per omarchy-arm-utm).
+- The pointer is drawn into the scanout, so every move costs a full-frame flush: the kernel exposes a virtio-gpu cursor plane and the device serves the cursor queue, but aquamarine 0.14 enumerates only the primary plane, so Hyprland never attempts a hardware cursor. See [docs/assessment.md](docs/assessment.md).
 
 ## Related
 
