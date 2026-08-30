@@ -52,6 +52,14 @@ Setup: microsandbox `main` @ 5b1c63d9 in a worktree (`gpu-m0`), `crates/runtime/
 - **Host port**: macOS Screen Sharing (`com.apple.screensharing`) answers `RFB 003.889` on 127.0.0.1:5900 when enabled, so `bin/run` publishes the guest's 5900 on host **5901**.
 - **Operational**: an `msb exec` fed from stdin (`cmd < file`) hung and left later execs hanging until the sandbox was restarted; pass scripts inline (heredoc in `bash -c`) and use `msb cp` for files.
 
+## M2 progress (2026-08-30): host-side 2D scanout works
+
+- `msb_krun_devices` patch: when `virgl_flags` has `VIRGL_RENDERER_NO_VIRGL` and not `VENUS`, `VirtioGpu::create_rutabaga` (and the fallback) build `RutabagaBuilder::new(RutabagaComponentType::Rutabaga2D, 0, 0)` with no channels or export table; the device advertises only `VERSION_1 | EDID` and `num_capsets = 0`. The guest now logs `features: -virgl +edid -resource_blob +host_visible -fence_passing`, `-context_init`, and mesa never probes the virgl driver (the M1 note about `+virgl` no longer applies to this build).
+- Level 1: `modetest -M virtio_gpu -s 37@36:1920x1080` in the `gpu-m0-modetest` sandbox returns 0 with **zero** `virtio_gpu_dequeue_ctrl_func` errors (M0 had ten).
+- Level 2 exposed a real device bug: `flush_resource` read the whole resource with `stride = resource.width * 4` into a frame buffer sized by the SET_SCANOUT rectangle, and rutabaga's `transfer_2d` returned `InvalidIovec` ("an iovec is outside of guest memory's range"), which the device then `unwrap()`ed — the gpu worker thread panicked on Hyprland's first flush. Fixed by recording the scanout rectangle in `VirtioGpuScanout` and transferring `min(resource, scanout)` with the destination stride; a failed read-back is now an `ErrUnspec` response instead of a panic. Both belong in the upstream PR.
+- With the fix, the `MSB_GPU_DUMP` backend (`crates/runtime/lib/gpu_display.rs`, `ConsoleBuilder::gpu_display_backend` from the msb_krun patch) receives `configure_scanout(1920, 1080, 1920, 1080, BGRX)` followed by `present_frame` with `rect 1920x1080+0+0`; the dumped BGRX frame is the live Omarchy desktop (bar, clock, notifications), byte-for-byte the same picture wayvnc serves. Hyprland only flushes on damage, so an idle desktop presents about once a minute (clock).
+- Present is synchronous: `FLUSH` is answered after `present_frame` returns, so the viewer must never block in `present_frame` (copy into shared memory, signal, return).
+
 ## Hyprland constraints
 
 - No DRM-free mode. Hyprland 0.56.1 registers aquamarine backends as HEADLESS mandatory, DRM if available, Wayland fallback — but `Backend::start()` builds its allocator from a backend `drmFD()`, and the headless backend returns -1. With no `/dev/dri` the log says "Cannot open backend: no allocator available". Issue hyprwm/Hyprland#7917 is closed as not planned; `HYPRLAND_HEADLESS_ONLY` is set by hyprtester but has no reader in the 0.56.1 tree.

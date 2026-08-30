@@ -31,7 +31,7 @@ Done 2026-08-30.
 
 Goal: `msb run omarchy` opens a macOS window with keyboard and pointer.
 
-- [ ] `msb_krun_devices`: route 2D resources (RESOURCE_CREATE_2D / ATTACH_BACKING / TRANSFER_TO_HOST_2D / SET_SCANOUT / FLUSH) through rutabaga's `Rutabaga2D` component when virgl is off — today virglrenderer rejects them on macOS (M0 finding)
+- [x] `msb_krun_devices`: route 2D resources through rutabaga's `Rutabaga2D` component when virgl is off — local patch `~/.cache/msb-omarchy/msb_krun_devices-0.1.32-patched` (`is_2d_only(virgl_flags)`: `NO_VIRGL` without `VENUS`; features drop VIRGL/BLOB/CONTEXT_INIT/UUID, capsets 0, flush copies only the scanout rectangle). `modetest -s` is error-free and a full Hyprland scanout frame reaches the host (`MSB_GPU_DUMP=<dir>` frame-dump backend, microsandbox commit e4735b6d)
 - [ ] Host display backend: connect `krun_display` scanout (`configure_scanout` / `present_frame`) to a winit + Metal window in microsandbox
 - [ ] Enable `input`; route window key/pointer events to virtio-input
 - [ ] CLI: `msb run --display …` (or config-file key); document the flag
