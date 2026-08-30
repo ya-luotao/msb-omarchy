@@ -2,7 +2,7 @@
 
 Run the [Omarchy](https://omarchy.org) desktop — Hyprland + the Quattro Quickshell shell — inside a [microsandbox](https://github.com/superradcompany/microsandbox) microVM on an Apple Silicon Mac, with graphics.
 
-> Status: **M1 works** (2026-08-30) — the Omarchy Quattro desktop runs inside a microsandbox microVM on Apple Silicon and is reachable over VNC. See [docs/plan.md](docs/plan.md) for the milestones and [docs/assessment.md](docs/assessment.md) for the evidence behind them.
+> Status: **M2 works** (2026-08-30) — the Omarchy Quattro desktop runs inside a microsandbox microVM on Apple Silicon, shows up in a native macOS window via `msb display`, and takes keyboard and pointer input. See [docs/plan.md](docs/plan.md) for the milestones and [docs/assessment.md](docs/assessment.md) for the evidence behind them.
 
 ![Omarchy inside microsandbox](docs/images/m1-omarchy-desktop.png)
 
@@ -15,7 +15,8 @@ Needs Docker (arm64), the `gpu-m0` build of `msb` (see [docs/plan.md](docs/plan.
 ```sh
 bin/build-rootfs      # Docker image from Arch Linux ARM + the omarchy packages, loaded into msb
 bin/run -d            # MSB_GPU=1 msb run --init auto … -p 127.0.0.1:5901:5900
-open vnc://127.0.0.1:5901
+msb display omarchy   # native window with keyboard and pointer (macOS)
+open vnc://127.0.0.1:5901   # or VNC
 ```
 
 `msb exec omarchy -- journalctl -b` and `msb cp omarchy:/path …` work as usual while the desktop runs.
@@ -51,7 +52,7 @@ This repo holds the guest image build, the run scripts, the docs, and the findin
 |---|---|---|
 | M0 ✅ | `/dev/dri/card0` appears in a guest with `gpu` enabled | `modetest -M virtio_gpu -s 37@36:1920x1080` succeeds (KMS on, connector Virtual-1) |
 | M1 ✅ | Omarchy desktop visible over VNC | `bin/run` + `vnc://127.0.0.1:5901` shows the Quattro bar |
-| M2 | Native macOS window | `msb run omarchy` opens a window with keyboard and pointer |
+| M2 ✅ | Native macOS window | `msb display omarchy` opens a window; Super+K opens the cheatsheet from the host keyboard |
 
 ## Hard constraints (read before designing around them)
 

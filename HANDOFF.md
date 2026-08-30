@@ -8,7 +8,7 @@ Session state for whoever picks this up next. Delete before making the repo publ
 |---|---|---|
 | M0 — DRM node in the guest | done 2026-08-30 | `docs/assessment.md` "M0 results", `docs/plan.md` |
 | M1 — Omarchy over VNC | done 2026-08-30 — desktop visible from the host over VNC | `docs/assessment.md` "M1 results", `docs/images/` |
-| M2 — native macOS window | step A done (2D scanout reaches the host, frame-dump backend); viewer process not started | `docs/assessment.md` "M2 progress" |
+| M2 — native macOS window | done 2026-08-30 (`msb display`, keyboard + pointer); `msb run --display` and upstream PRs remain | `docs/assessment.md` "M2 results" |
 | Local msb | fixed: `~/.microsandbox/bin/msb` is the `gpu-m0` build (0.6.16); old binary kept as `msb-0.6.14.bak` | §3 |
 | Running sandbox | `omarchy` (image `msb-omarchy:dev`, VNC on 127.0.0.1:5901) — `msb stop omarchy` when not needed | `bin/run` |
 
@@ -19,15 +19,14 @@ Session state for whoever picks this up next. Delete before making the repo publ
 - Guest sources: `~/.cache/msb-omarchy/omarchy` (omacom/omarchy at 13f18b2, the commit omarchy-pkgs 4.0.1 pins), `~/.cache/msb-omarchy/omarchy-pkgs` (sparse: `pkgbuilds/omarchy`, `pkgbuilds/omarchy-settings`), `~/.cache/msb-omarchy/omarchy-arm-utm` (reference for the ALARM package set and software-rendering settings).
 - Kept sandbox `gpu-m0-modetest` (python:3.12-slim + `libdrm-tests`): `MSB_GPU=1 msb run --name gpu-m0-modetest public.ecr.aws/docker/library/python:3.12-slim -- modetest -M virtio_gpu`.
 
-## 3. M2 next steps
+## 3. Next steps
 
-Done: `~/.cache/msb-omarchy/msb_krun_devices-0.1.32-patched` (2D-only mode + scanout read-back fix, commit 37e5696), `msb_krun-0.1.32-patched` (`gpu_display_backend`, commit 83989de), microsandbox `gpu-m0` commit e4735b6d (`crates/runtime/lib/gpu_display.rs`, `MSB_GPU_DUMP`). `MSB=~/.herdr/worktrees/microsandbox/gpu-m0/build/msb MSB_GPU_DUMP=~/.cache/msb-omarchy/frames bin/run -d` dumps `scanout0.raw` (BGRX); convert with Pillow (`Image.frombytes("RGBA", (1920, 1080), raw, "raw", "BGRA")`).
+M2 code: microsandbox `gpu-m0` commit 5bd45782 (`crates/runtime/lib/gpu_display/{mod,protocol,input,dump}.rs`, `crates/cli/lib/commands/display.rs`, `ipc.rs` display socket), plus vendored patches `msb_krun_devices` (37e5696), `msb_krun` (986266f), `msb_krun_utils` (efad426) under `~/.cache/msb-omarchy/`. Run: `MSB=~/.herdr/worktrees/microsandbox/gpu-m0/build/msb bin/run -d` then `~/.herdr/worktrees/microsandbox/gpu-m0/build/msb display omarchy`. A headless client for tests lives in the session scratchpad only; recreate from `bin/vnc-shot` + the protocol module if needed.
 
-Design decided for the rest (see assessment): the sandbox process's main thread is consumed by `Vm::enter()` (returns `Infallible`), so the window lives in a separate viewer process. Plan:
-1. Display backend in `crates/runtime` that copies each presented frame into a shared-memory file per scanout (in the sandbox runtime dir) and publishes `Configure{scanout,w,h,format,path}` / `Frame{scanout,seq,rect}` over a Unix socket (`display.sock` next to `agent.sock`); `present_frame` must not wait for the viewer.
-2. `msb display <sandbox>` (crates/cli, macOS-only deps gated by `cfg(target_os = "macos")`): winit + softbuffer on the main thread, maps the shm, repaints on `Frame`.
-3. Input: enable msb_krun's `input` feature, add `ConsoleBuilder::gpu_input(config, events)` to the msb_krun patch, send winit key/pointer events (absolute EV_ABS pointer) back over the socket into a `krun_input` event provider. The fork's `examples/krun_gtk_display/src/input_backend.rs` + `input_constants.rs` are the reference.
-4. `msb run --display` = run the viewer after boot.
+1. `msb run --display`: spawn `msb display <name>` after the sandbox reports ready (the viewer must be a separate process; see assessment).
+2. Viewer polish: HiDPI (window is 1920x1080 physical = 960x540 points on Retina), cursor confinement/relative mode, clipboard.
+3. Upstream: PRs to zerocore-ai/libkrun from the three patch repos (each has a baseline commit + one change commit, `git diff HEAD~1` is the PR); then a microsandbox PR for `gpu-m0` once the crates are published.
+4. Later items in `docs/plan.md`.
 
 ## 3a. M1 operating notes
 
