@@ -19,7 +19,7 @@ Goal: the Quattro bar visible in Screen Sharing on the Mac.
 
 - [x] Guest rootfs: Arch Linux ARM base, `--init auto` → systemd, logind, udev — `guest/Dockerfile` on `menci/archlinuxarm:base`; SDDM autologin into the `omarchy` session (uwsm)
 - [x] Install Hyprland 0.56 + quickshell from ALARM; the real `omarchy` / `omarchy-settings` packages built with `makepkg` from omarchy-pkgs' PKGBUILDs (`OMARCHY_SRC` = omacom/omarchy @ 13f18b2); only 3 packages missing on aarch64 (`ttf-jetbrains-mono-nerd-basic` → `ttf-jetbrains-mono-nerd`, `xdg-terminal-exec` → wrapper, `yaru-icon-theme` skipped)
-- [x] Hyprland env: **no** `LIBGL_ALWAYS_SOFTWARE` (see assessment), `AQ_NO_MODIFIERS=1`, blur/shadows off, scale 1 on the virtio-gpu connector `Virtual-1` (`WLR_NO_HARDWARE_CURSORS=1` dropped 2026-08-31: nothing reads it; `cursor:use_cpu_buffer = 1` set for the hardware cursor — see assessment)
+- [x] Hyprland env: **no** `LIBGL_ALWAYS_SOFTWARE` (see assessment), `AQ_NO_MODIFIERS=1`, blur/shadows off, scale 1 on the virtio-gpu connector `Virtual-1` (`WLR_NO_HARDWARE_CURSORS=1` dropped 2026-08-31: nothing reads it — see assessment)
 - [x] wayvnc as a user service on `graphical-session.target`; `bin/run` publishes `127.0.0.1:5901` (macOS Screen Sharing owns 5900)
 - [x] Desktop screenshot: `docs/images/m1-omarchy-desktop.png` (grim inside the guest)
 - [x] A VNC client on the Mac shows the same desktop — `bin/vnc-shot` pulls a full 1920x1080 RAW frame from `127.0.0.1:5901` in 0.2 s (`open vnc://127.0.0.1:5901` for Screen Sharing)
