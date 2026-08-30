@@ -42,6 +42,7 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m0 build> bin/run -d --displa
 
 ## Later
 
+- Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done
 - Audio via `snd` (PipeWire)
 - Clipboard between host and guest
 - Multiple outputs
