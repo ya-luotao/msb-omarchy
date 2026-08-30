@@ -36,7 +36,7 @@ Goal: `msb run omarchy` opens a macOS window with keyboard and pointer.
 - [x] `msb display <sandbox>` (`crates/cli/lib/commands/display.rs`, macOS: winit 0.30 + softbuffer 0.4 on the main thread before Tokio): maps the frames into a native window (BGRX is softbuffer's 0RGB, a straight copy; nearest-neighbour scale otherwise)
 - [x] Input: two virtio-input devices (keyboard; absolute pointer like QEMU's tablet with `ABS_X/Y` 0..32767, three buttons, two wheels) fed from the viewer's winit events over the same socket; libinput accepts both, Super+K opens the Omarchy cheatsheet (`docs/images/m2-cheatsheet-via-display.png`, captured through the display path by a headless socket client)
 - [x] `msb run --display` starts the viewer after boot and turns the GPU on for that sandbox (microsandbox commit ce4d2d5f); `bin/run -d --display`
-- [ ] Upstream the microsandbox side as PRs (see the three msb_krun patches in the assessment)
+- [x] Upstream PRs opened 2026-08-30: libkrun [#116](https://github.com/superradcompany/libkrun/pull/116) (macOS eventfd flags), [#117](https://github.com/superradcompany/libkrun/pull/117) (2D-only virtio-gpu + scanout read-back), [#118](https://github.com/superradcompany/libkrun/pull/118) (display/input builder methods); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482) (draft: display server, `msb display`, `--display`) — to be rebased onto #1194's `--gpu` option once the crates are published
 
 Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m0 build> bin/run -d --display`.
 

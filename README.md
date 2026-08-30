@@ -12,7 +12,7 @@ This is the opposite direction from [omarchy-microsandbox](https://github.com/ya
 
 ## Quick start
 
-Needs an Apple Silicon Mac, Docker (arm64 images), and an `msb` built from the [`gpu-m0` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m0) — the virtio-gpu display, `msb display` and the three small `msb_krun` fixes live there until they are upstreamed (build recipe in [docs/plan.md](docs/plan.md), M0). `bin/build-rootfs` clones the Omarchy sources it needs.
+Needs an Apple Silicon Mac, Docker (arm64 images), and an `msb` built from the [`gpu-m0` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m0) — the virtio-gpu display, `msb display` and the three small `msb_krun` fixes live there while the upstream PRs are open (libkrun [#116](https://github.com/superradcompany/libkrun/pull/116), [#117](https://github.com/superradcompany/libkrun/pull/117), [#118](https://github.com/superradcompany/libkrun/pull/118); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482)). Build recipe in [docs/plan.md](docs/plan.md), M0. `bin/build-rootfs` clones the Omarchy sources it needs.
 
 ```sh
 bin/build-rootfs      # Docker image from Arch Linux ARM + the omarchy packages, loaded into msb
