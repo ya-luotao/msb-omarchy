@@ -1,0 +1,7 @@
+.DS_Store
+*.qcow2
+*.img
+*.ext4
+rootfs/
+build/
+test-runs/
