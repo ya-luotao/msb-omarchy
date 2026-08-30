@@ -2,7 +2,7 @@
 
 Run the [Omarchy](https://omarchy.org) desktop — Hyprland + the Quattro Quickshell shell — inside a [microsandbox](https://github.com/superradcompany/microsandbox) microVM on an Apple Silicon Mac, with graphics.
 
-> Status: **planning / de-risking**. Nothing runs yet. See [docs/plan.md](docs/plan.md) for the milestones and [docs/assessment.md](docs/assessment.md) for the evidence behind them.
+> Status: **M0 done** (2026-08-30) — a guest under microsandbox/HVF gets a KMS-capable `/dev/dri/card0`; nothing graphical runs yet. See [docs/plan.md](docs/plan.md) for the milestones and [docs/assessment.md](docs/assessment.md) for the evidence behind them.
 
 This is the opposite direction from [omarchy-microsandbox](https://github.com/ya-luotao/omarchy-microsandbox), which is an Omarchy bar plugin for managing microsandbox VMs. This repo puts Omarchy *inside* the VM.
 
@@ -35,7 +35,7 @@ This repo holds the guest image build, the run scripts, the docs, and the findin
 
 | | Goal | Proof |
 |---|---|---|
-| M0 | `/dev/dri/card0` appears in a guest with `gpu` enabled | `drmIsKMS()` passes, or `AQ_NO_KMS_REQUIREMENT=1` is enough |
+| M0 ✅ | `/dev/dri/card0` appears in a guest with `gpu` enabled | `modetest -M virtio_gpu -s 37@36:1920x1080` succeeds (KMS on, connector Virtual-1) |
 | M1 | Omarchy desktop visible over VNC | `msb run … -p 127.0.0.1:5900` + Screen Sharing shows the Quattro bar |
 | M2 | Native macOS window | `msb run omarchy` opens a window with keyboard and pointer |
 

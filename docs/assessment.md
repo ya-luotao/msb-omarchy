@@ -26,7 +26,20 @@ No kernel rebuild is needed for M0–M2.
 - `crates/runtime/Cargo.toml` enables only `blk`. `crates/runtime/lib/vm.rs` wires blk / net / vsock / console and nothing else. `agentd` has no display or Wayland concept.
 - Networking is an in-tree smoltcp stack with TCP and UDP; `-p 127.0.0.1:PORT:PORT` forwards a host port to the guest. The documented VNC desktop example (LXQt + TigerVNC + noVNC) already uses this.
 - Rootfs can be a directory (virtiofs), an ext4 flat root, or a qcow2 disk; `--init auto` hands PID 1 to systemd.
-- Unknown: whether the `gpu` device works at all on the HVF backend. It has no test record. This is M0.
+- Whether the `gpu` device works on the HVF backend was the M0 unknown — answered below: it does.
+
+## M0 results (2026-08-30, HVF, Apple Silicon)
+
+Setup: microsandbox `main` @ 5b1c63d9 in a worktree (`gpu-m0`), `crates/runtime/Cargo.toml` with `msb_krun` features `["blk", "gpu"]`, and an opt-in `MSB_GPU=1` gate in `crates/runtime/lib/vm.rs` that calls `gpu_virgl_flags(VIRGL_RENDERER_NO_VIRGL)` + `gpu_shm_size(256 MiB)` on the console builder. Guest: cached `public.ecr.aws/docker/library/alpine:latest`, kernel libkrunfw 6.12.99.
+
+- **Build**: the `gpu` feature links `libvirglrenderer` unconditionally (`#[link(name = "virglrenderer")]` in `msb_krun_rutabaga_gfx`'s generated bindings; the device hard-codes `RutabagaComponentType::VirglRenderer`). On macOS the library comes from `brew install slp/krun/virglrenderer` (0.10.4e-krunkit, pulls `libepoxy` + `molten-vk`). rutabaga's pkg-config probe is compiled out (it sits under rutabaga's own `gpu` feature, which `msb_krun_devices` does not enable), so the build needs `LIBRARY_PATH=/opt/homebrew/lib`. `krun_display` needs libclang for bindgen (Xcode CLT is enough). `cargo build --profile ci` of `microsandbox-cli` then succeeds and the binary dynamically links `/opt/homebrew/opt/virglrenderer/lib/libvirglrenderer.1.dylib`.
+- **Boot with 0 scanouts** (`msb_krun` 0.1.32 API exposes no display configuration): guest gets `/dev/dri/card0` and `/dev/dri/renderD128`, driver `virtio-mmio` → `virtio_gpu`, dmesg `features: +virgl +edid +resource_blob +host_visible -fence_passing`, `+context_init`, `KMS disabled`, 5 cap sets (ids 1, 2, 4, 6, 5). No host-side warnings; the fallback path ("Failed to create virtio_gpu backend") did not trigger. Boot time unchanged (~0.3 s).
+- **Answer to the M0 unknown**: `msb_krun`'s virtio-gpu device works on the HVF backend. The gpu worker thread, the macOS `GpuAddMapping` worker, and the SHM window (`Host memory window: 0xc0000000 +0x10000000`) all come up.
+- **Boot with 1 scanout** (local `msb_krun` patch adding `ConsoleBuilder::gpu_display(w, h)`, see `docs/plan.md`): dmesg `number of scanouts: 1`, KMS on, connector `card0-Virtual-1` (`status=connected` after `echo detect > status`), 128-byte EDID (`krun-display`), 9 modes with 1920x1080@59.98 preferred. `modetest -M virtio_gpu` (Debian `libdrm-tests`, installed over the guest's own network) lists encoder 38 / connector 37 / CRTC 36; `modetest -s 37@36:1920x1080` returns 0 and the CRTC reports 1920x1080 afterwards. So `drmIsKMS()` passes and `AQ_NO_KMS_REQUIREMENT` is **not** needed.
+- **Host side rejects 2D content**: after the modeset the guest logs `response 0x1200 (command 0x101)` (RESOURCE_CREATE_2D), `0x106` (ATTACH_BACKING), `0x105` (TRANSFER_TO_HOST_2D), `0x200/0x202` (ctx create/attach) and `0x1202/0x1203` for `0x103/0x104` (SET_SCANOUT / RESOURCE_FLUSH). The device always builds a `RutabagaComponentType::VirglRenderer` and, with `VIRGL_RENDERER_NO_VIRGL`, virglrenderer has no vrend state, so non-blob resources fail with EINVAL; there is no EGL on macOS to enable virgl. The guest keeps working (dumb buffers are guest-backed; the kernel only logs the error responses), so M1 — Hyprland rendering with llvmpipe into GBM/dumb buffers and wayvnc reading back from the compositor — is not blocked. M2 (frames on the host) needs the 2D path routed to rutabaga's `Rutabaga2D` component (or an equivalent) in `msb_krun_devices`; that is the actual gap upstream libkrun's "display works, gpu on macOS does not" note describes.
+- **`MSB_GPU=venus`** (`NO_VIRGL | VENUS`, virglrenderer 0.10.4e-krunkit + MoltenVK): initializes without host errors and the guest sees the same device. Whether Venus contexts work is untested and not on the plan's critical path.
+- **Not required**: no guest kernel change.
+- **Host environment fixes on the way**: `~/.microsandbox/db/msb.db` had `m20260824_000001_mount_owner_config` applied but not `m20260818_000001_sandbox_network_slot` (a branch build migrated it); `m20260824` is a no-op marker and `m20260818` is idempotent, so deleting the `m20260824` row and letting a `main` build re-apply both fixed the "database schema is newer than this msb binary" error.
 
 ## Hyprland constraints
 
@@ -56,7 +69,7 @@ No project runs a full Wayland desktop inside libkrun/krunkit on a Mac as of 202
 
 ## Risks
 
-1. `msb_krun` gpu device on HVF is untested.
+1. ~~`msb_krun` gpu device on HVF is untested.~~ Resolved (M0): DRM node + KMS work; host-side 2D scanout does not (needs a `Rutabaga2D` path for M2).
 2. Package gap on aarch64 (source builds, no omarchy-pkgs db).
 3. Quickshell/Qt on llvmpipe: works, slow; effects must be off.
 4. Hyprland headless outputs regress periodically (#8806, discussion #12690).
