@@ -41,13 +41,15 @@ RUN useradd -m -G wheel,video,input,audio,render -s /bin/bash omarchy \
  && for m in /usr/share/omarchy/migrations/*.sh; do touch "/home/omarchy/.local/state/omarchy/migrations/$(basename "$m")"; done \
  && chown -R omarchy:omarchy /home/omarchy
 
-# VM-specific overrides: software rendering, 1x scale, SDDM autologin, wayvnc.
+# VM-specific overrides: software rendering, 1x scale, SDDM autologin, wayvnc,
+# host clipboard sync.
 COPY overlay/ /
 RUN cp -a /etc/skel-omarchy/. /home/omarchy/ && rm -rf /etc/skel-omarchy \
  && chown -R omarchy:omarchy /home/omarchy \
- && chmod +x /usr/local/bin/xdg-terminal-exec \
+ && chmod +x /usr/local/bin/xdg-terminal-exec /usr/local/bin/msb-clipboard \
  && mkdir -p /home/omarchy/.config/systemd/user/graphical-session.target.wants \
  && ln -sf ../wayvnc.service /home/omarchy/.config/systemd/user/graphical-session.target.wants/wayvnc.service \
+ && ln -sf ../msb-clipboard.service /home/omarchy/.config/systemd/user/graphical-session.target.wants/msb-clipboard.service \
  && chown -R omarchy:omarchy /home/omarchy/.config/systemd \
  && systemctl enable sddm.service \
  && systemctl set-default graphical.target \

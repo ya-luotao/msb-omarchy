@@ -43,6 +43,6 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m0 build> bin/run -d --displa
 ## Later
 
 - Audio via `snd` (PipeWire)
-- Clipboard between host and guest
+- [x] Clipboard between host and guest — text both ways while `msb display` is open: a `msb-clipboard` user service in the guest talks newline-delimited JSON over vsock port 5910 to an in-process backend owned by the display server, which relays it to the viewer as `ServerMsg::Clipboard` / `ViewerMsg::Clipboard`; the viewer uses `arboard` for the macOS pasteboard. Images are not carried yet, but the wire format has a `mime` field for them.
 - Multiple outputs
 - Whether any of this can become Omarchy's own graphical test runner on Macs
