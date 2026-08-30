@@ -4,7 +4,9 @@ Run the [Omarchy](https://omarchy.org) desktop — Hyprland + the Quattro Quicks
 
 > Status: **M2 works** (2026-08-30) — the Omarchy Quattro desktop runs inside a microsandbox microVM on Apple Silicon, shows up in a native macOS window via `msb display`, and takes keyboard and pointer input. See [docs/plan.md](docs/plan.md) for the milestones and [docs/assessment.md](docs/assessment.md) for the evidence behind them.
 
-![Omarchy inside microsandbox](docs/images/m1-omarchy-desktop.png)
+![Omarchy in a native macOS window via msb display](docs/images/m2-native-window.png)
+
+*`msb run --display`: the Omarchy desktop in a native macOS window, with the keybindings cheatsheet opened from the Mac keyboard (Super+K). Over VNC instead: [docs/images/m1-omarchy-desktop.png](docs/images/m1-omarchy-desktop.png).*
 
 This is the opposite direction from [omarchy-microsandbox](https://github.com/ya-luotao/omarchy-microsandbox), which is an Omarchy bar plugin for managing microsandbox VMs. This repo puts Omarchy *inside* the VM.
 
