@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Grab one RAW frame from a VNC server and save it as PNG (needs Pillow).
+
+    bin/vnc-shot [host] [port] [out.png]     defaults: 127.0.0.1 5901 vnc.png
+
+Used for M1 proof and for headless screenshots of the sandbox desktop; vncdotool
+hangs on wayvnc, this does not.
+"""
+import socket, struct, sys, time
+from PIL import Image
+a = sys.argv[1:] + ["127.0.0.1", "5901", "vnc.png"][len(sys.argv) - 1:]
+host, port, out = a[0], int(a[1]), a[2]
+s = socket.create_connection((host, port), timeout=30)
+def rd(n):
+    b = bytearray()
+    while len(b) < n:
+        c = s.recv(min(1 << 20, n - len(b)))
+        if not c: raise EOFError("closed after %d bytes" % len(b))
+        b += c
+    return bytes(b)
+rd(12); s.sendall(b"RFB 003.008\n")
+n = rd(1)[0]; rd(n); s.sendall(bytes([1])); rd(4); s.sendall(bytes([1]))
+w, h = struct.unpack(">HH", rd(4)); pf = rd(16); nl = struct.unpack(">I", rd(4))[0]; rd(nl)
+bpp, depth, bigend, tc, rmax, gmax, bmax, rsh, gsh, bsh = struct.unpack(">BBBBHHHBBB", pf[:13])
+print("server", w, h, "bpp", bpp, "shifts", rsh, gsh, bsh)
+img = Image.new("RGB", (w, h))
+s.sendall(struct.pack(">BxHi", 2, 1, 0))
+t0 = time.time(); painted = 0
+while painted < w * h and time.time() - t0 < 60:
+    s.sendall(struct.pack(">BBHHHH", 3, 1 if painted else 0, 0, 0, w, h))
+    mt = rd(1)[0]
+    if mt != 0:
+        print("unexpected message type", mt); break
+    rd(1); nrects = struct.unpack(">H", rd(2))[0]
+    for _ in range(nrects):
+        x, y, rw, rh, enc = struct.unpack(">HHHHi", rd(12))
+        if enc == 0:
+            data = rd(rw * rh * bpp // 8)
+            px = Image.frombytes("RGBA", (rw, rh), data, "raw", "BGRA" if (rsh, gsh, bsh) == (16, 8, 0) else "RGBA")
+            img.paste(px.convert("RGB"), (x, y)); painted += rw * rh
+        else:
+            print("skip encoding", enc, rw, rh)
+img.save(out); print("painted px", painted, "of", w * h, "in %.1fs" % (time.time() - t0), "->", out)

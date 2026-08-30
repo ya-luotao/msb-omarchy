@@ -17,12 +17,15 @@ Done 2026-08-30. Build recipe: `brew install slp/krun/virglrenderer`, then in th
 
 Goal: the Quattro bar visible in Screen Sharing on the Mac.
 
-- [ ] Guest rootfs: Arch Linux ARM base, `--init auto` → systemd, seatd or logind, udev
-- [ ] Install Hyprland 0.56 + quickshell from ALARM; Omarchy install per omarchy-arm-utm's package list, source builds for the missing ~17 packages
-- [ ] Hyprland env: `LIBGL_ALWAYS_SOFTWARE=1`, effects off (blur, shadows), single `HEADLESS-0` or the virtio-gpu connector
-- [ ] wayvnc as a user service on the Hyprland output; `msb run … -p 127.0.0.1:5900:5900`
-- [ ] Screen Sharing → desktop; screenshot for the README
-- [ ] Script it: `bin/build-rootfs`, `bin/run`
+- [x] Guest rootfs: Arch Linux ARM base, `--init auto` → systemd, logind, udev — `guest/Dockerfile` on `menci/archlinuxarm:base`; SDDM autologin into the `omarchy` session (uwsm)
+- [x] Install Hyprland 0.56 + quickshell from ALARM; the real `omarchy` / `omarchy-settings` packages built with `makepkg` from omarchy-pkgs' PKGBUILDs (`OMARCHY_SRC` = omacom/omarchy @ 13f18b2); only 3 packages missing on aarch64 (`ttf-jetbrains-mono-nerd-basic` → `ttf-jetbrains-mono-nerd`, `xdg-terminal-exec` → wrapper, `yaru-icon-theme` skipped)
+- [x] Hyprland env: **no** `LIBGL_ALWAYS_SOFTWARE` (see assessment), `WLR_NO_HARDWARE_CURSORS=1`, `AQ_NO_MODIFIERS=1`, blur/shadows off, scale 1 on the virtio-gpu connector `Virtual-1`
+- [x] wayvnc as a user service on `graphical-session.target`; `bin/run` publishes `127.0.0.1:5901` (macOS Screen Sharing owns 5900)
+- [x] Desktop screenshot: `docs/images/m1-omarchy-desktop.png` (grim inside the guest)
+- [x] A VNC client on the Mac shows the same desktop — `bin/vnc-shot` pulls a full 1920x1080 RAW frame from `127.0.0.1:5901` in 0.2 s (`open vnc://127.0.0.1:5901` for Screen Sharing)
+- [x] Script it: `bin/build-rootfs`, `bin/run`, `bin/vnc-shot`
+
+Done 2026-08-30.
 
 ## M2 — native window
 
