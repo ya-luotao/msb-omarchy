@@ -8,7 +8,7 @@ Session state for whoever picks this up next. Delete before making the repo publ
 |---|---|---|
 | M0 — DRM node in the guest | done 2026-08-30 | `docs/assessment.md` "M0 results", `docs/plan.md` |
 | M1 — Omarchy over VNC | done 2026-08-30 — desktop visible from the host over VNC | `docs/assessment.md` "M1 results", `docs/images/` |
-| M2 — native macOS window | done 2026-08-30 (`msb run --display` / `msb display`, keyboard + pointer); upstream PRs remain | `docs/assessment.md` "M2 results" |
+| M2 — native macOS window | done and user-verified 2026-08-30 (`msb run --display` / `msb display`, keyboard + pointer); upstream PRs remain | `docs/assessment.md` "M2 results" |
 | Local msb | `~/.microsandbox/bin/msb` is the final `gpu-m0` build (0.6.16, `git log gpu-m0`: display + `--display`); the release binary is kept as `msb-0.6.14.bak`. Plain boots without `MSB_GPU` verified after install | §3 |
 | Running sandbox | `omarchy` (image `msb-omarchy:dev`, VNC on 127.0.0.1:5901) — `msb stop omarchy` when not needed | `bin/run` |
 
