@@ -14,8 +14,8 @@ Needs Docker (arm64), the `gpu-m0` build of `msb` (see [docs/plan.md](docs/plan.
 
 ```sh
 bin/build-rootfs      # Docker image from Arch Linux ARM + the omarchy packages, loaded into msb
-bin/run -d            # MSB_GPU=1 msb run --init auto … -p 127.0.0.1:5901:5900
-msb display omarchy   # native window with keyboard and pointer (macOS)
+bin/run -d --display  # msb run --init auto … -p 127.0.0.1:5901:5900 --display: native window with keyboard and pointer
+msb display omarchy   # reopen the window later
 open vnc://127.0.0.1:5901   # or VNC
 ```
 
@@ -52,7 +52,7 @@ This repo holds the guest image build, the run scripts, the docs, and the findin
 |---|---|---|
 | M0 ✅ | `/dev/dri/card0` appears in a guest with `gpu` enabled | `modetest -M virtio_gpu -s 37@36:1920x1080` succeeds (KMS on, connector Virtual-1) |
 | M1 ✅ | Omarchy desktop visible over VNC | `bin/run` + `vnc://127.0.0.1:5901` shows the Quattro bar |
-| M2 ✅ | Native macOS window | `msb display omarchy` opens a window; Super+K opens the cheatsheet from the host keyboard |
+| M2 ✅ | Native macOS window | `msb run --display` opens a window; Super+K opens the cheatsheet from the host keyboard |
 
 ## Hard constraints (read before designing around them)
 

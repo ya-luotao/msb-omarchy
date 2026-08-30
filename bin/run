@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start (or restart) the Omarchy sandbox with a virtio-gpu scanout and VNC on 127.0.0.1:5901 (macOS Screen Sharing owns 5900).
+# Start (or restart) the Omarchy sandbox with a virtio-gpu scanout and VNC on 127.0.0.1:5901
+# (macOS Screen Sharing owns 5900). Add --display for the native window (msb run --display).
 set -euo pipefail
 MSB=${MSB:-$HOME/.microsandbox/bin/msb}
 NAME=${NAME:-omarchy}

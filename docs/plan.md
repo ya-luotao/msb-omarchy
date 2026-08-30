@@ -35,10 +35,10 @@ Goal: `msb run omarchy` opens a macOS window with keyboard and pointer.
 - [x] Host display path: the sandbox process cannot own a window (`Vm::enter()` takes the main thread), so `crates/runtime/lib/gpu_display/` copies each presented frame into a 2-slot memory-mapped file per scanout and announces slots over `display.sock` (JSON lines, next to `agent.sock`); `present_frame` never waits for a viewer
 - [x] `msb display <sandbox>` (`crates/cli/lib/commands/display.rs`, macOS: winit 0.30 + softbuffer 0.4 on the main thread before Tokio): maps the frames into a native window (BGRX is softbuffer's 0RGB, a straight copy; nearest-neighbour scale otherwise)
 - [x] Input: two virtio-input devices (keyboard; absolute pointer like QEMU's tablet with `ABS_X/Y` 0..32767, three buttons, two wheels) fed from the viewer's winit events over the same socket; libinput accepts both, Super+K opens the Omarchy cheatsheet (`docs/images/m2-cheatsheet-via-display.png`, captured through the display path by a headless socket client)
-- [ ] `msb run --display` (or config key) that starts the viewer after boot; document the flag
+- [x] `msb run --display` starts the viewer after boot and turns the GPU on for that sandbox (microsandbox commit ce4d2d5f); `bin/run -d --display`
 - [ ] Upstream the microsandbox side as PRs (see the three msb_krun patches in the assessment)
 
-Done through `msb display` on 2026-08-30. Run: `MSB=<gpu-m0 build> bin/run -d`, then `msb display omarchy`.
+Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m0 build> bin/run -d --display`.
 
 ## Later
 
