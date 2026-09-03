@@ -21,6 +21,8 @@ msb display omarchy   # reopen the window later
 open vnc://127.0.0.1:5901   # or VNC
 ```
 
+Text copied in the desktop lands on the Mac pasteboard and vice versa while the `msb display` window is open; `MSB_DISPLAY_CLIPBOARD=0 msb display omarchy` turns that off in both directions.
+
 `msb exec omarchy -- journalctl -b` and `msb cp omarchy:/path …` work as usual while the desktop runs.
 
 ## Why

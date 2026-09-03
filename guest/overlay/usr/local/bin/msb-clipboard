@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""Sync the Wayland clipboard with the host while `msb display` is open.
+
+The sandbox's display server registers an in-process vsock backend on port
+5910 whenever it serves a scanout, so this agent connects to CID 2 (the host)
+and speaks newline-delimited JSON in both directions:
+
+    {"t":"set","mime":"text/plain;charset=utf-8","data":"<base64>"}
+
+`data` is base64 of the raw selection, which leaves room for other MIME types
+later; this iteration handles text only.
+
+Loop prevention lives here and in the viewer, not in the runtime: whatever
+arrives from the host is remembered so the `wl-paste --watch` echo it causes is
+not sent straight back.
+"""
+
+import base64
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+HOST_CID = 2
+PORT = 5910
+TEXT_MIME = "text/plain;charset=utf-8"
+
+# Matches the host's queue cap; larger selections are dropped, not truncated.
+MAX_PAYLOAD = 16 * 1024 * 1024
+RECONNECT_DELAY = 5.0
+
+# `wl-paste --watch` runs this per change and hands it the selection on stdin.
+# Concatenated values would be unsplittable, so each is terminated with a NUL,
+# which Wayland text selections cannot themselves contain.
+WATCH_COMMAND = ["sh", "-c", 'cat; printf "\\0"']
+
+
+def log(message):
+    """Write one line to the journal."""
+    print(message, file=sys.stderr, flush=True)
+
+
+class Link:
+    """The vsock connection, plus the loop-prevention state around it."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._sock = None
+        # Last selection received from the host, to ignore its own echo.
+        self._from_host = None
+
+    def set_socket(self, sock):
+        with self._lock:
+            self._sock = sock
+
+    def clear_socket(self):
+        with self._lock:
+            self._sock = None
+
+    def note_from_host(self, payload):
+        with self._lock:
+            self._from_host = payload
+
+    def is_echo(self, payload):
+        """True when `payload` is just the value the host last sent us."""
+        with self._lock:
+            return payload == self._from_host
+
+    def send(self, payload):
+        """Offer the guest's selection to the host; drop it if nothing is attached."""
+        message = json.dumps(
+            {
+                "t": "set",
+                "mime": TEXT_MIME,
+                "data": base64.b64encode(payload).decode("ascii"),
+            },
+            separators=(",", ":"),
+        ).encode("utf-8") + b"\n"
+        with self._lock:
+            sock = self._sock
+            if sock is None:
+                return
+            try:
+                sock.sendall(message)
+            except OSError as err:
+                log(f"send failed: {err}")
+                self._sock = None
+
+
+def apply_from_host(link, payload):
+    """Put the host's selection on the Wayland clipboard."""
+    # Recorded before wl-copy runs, or the watcher can observe the new value
+    # first and bounce it back to the host.
+    link.note_from_host(payload)
+    try:
+        subprocess.run(
+            ["wl-copy", "--type", TEXT_MIME],
+            input=payload,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as err:
+        log(f"wl-copy failed: {err}")
+
+
+def handle_line(link, line):
+    """Act on one JSON line from the host."""
+    try:
+        message = json.loads(line)
+    except ValueError as err:
+        log(f"bad message from host: {err}")
+        return
+    if not isinstance(message, dict) or message.get("t") != "set":
+        return
+    mime = message.get("mime", "")
+    if not mime.startswith("text/plain"):
+        log(f"ignoring unsupported clipboard type {mime}")
+        return
+    try:
+        payload = base64.b64decode(message.get("data", ""), validate=True)
+    except (ValueError, TypeError) as err:
+        log(f"bad clipboard payload from host: {err}")
+        return
+    if len(payload) > MAX_PAYLOAD:
+        log(f"dropping {len(payload)} byte selection from host")
+        return
+    apply_from_host(link, payload)
+
+
+def watch_clipboard(link):
+    """Forward every local selection change to the host, forever."""
+    while True:
+        try:
+            watcher = subprocess.Popen(
+                ["wl-paste", "--type", "text", "--watch"] + WATCH_COMMAND,
+                stdout=subprocess.PIPE,
+                bufsize=0,
+            )
+        except OSError as err:
+            log(f"cannot start wl-paste: {err}")
+            time.sleep(RECONNECT_DELAY)
+            continue
+
+        buffered = b""
+        oversized = False
+        with watcher:
+            while True:
+                chunk = os.read(watcher.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                buffered += chunk
+                # Guard against a selection that never ends.
+                if len(buffered) > MAX_PAYLOAD:
+                    if not oversized:
+                        log("dropping oversized local selection")
+                        oversized = True
+                    buffered = buffered[-1:] if buffered.endswith(b"\0") else b""
+                while b"\0" in buffered:
+                    payload, buffered = buffered.split(b"\0", 1)
+                    if oversized:
+                        oversized = False
+                        continue
+                    if payload and not link.is_echo(payload):
+                        link.send(payload)
+        log("wl-paste --watch exited; restarting")
+        time.sleep(RECONNECT_DELAY)
+
+
+def serve(link):
+    """Connect to the host and read its clipboard updates, reconnecting forever."""
+    while True:
+        try:
+            sock = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
+            sock.connect((HOST_CID, PORT))
+        except OSError:
+            # Expected whenever the sandbox runs without MSB_GPU: stay quiet.
+            time.sleep(RECONNECT_DELAY)
+            continue
+
+        log(f"connected to the host on port {PORT}")
+        link.set_socket(sock)
+        buffered = b""
+        try:
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                buffered += chunk
+                if len(buffered) > MAX_PAYLOAD:
+                    log("dropping oversized message from host")
+                    buffered = b""
+                    continue
+                while b"\n" in buffered:
+                    line, buffered = buffered.split(b"\n", 1)
+                    if line.strip():
+                        handle_line(link, line)
+        except OSError as err:
+            log(f"host connection failed: {err}")
+        finally:
+            link.clear_socket()
+            sock.close()
+        log("host connection closed; reconnecting")
+        time.sleep(RECONNECT_DELAY)
+
+
+def main():
+    if not os.path.exists("/dev/vsock"):
+        log("no /dev/vsock; clipboard sync unavailable")
+        return 0
+    if not hasattr(socket, "AF_VSOCK"):
+        log("python has no AF_VSOCK support; clipboard sync unavailable")
+        return 0
+
+    link = Link()
+    threading.Thread(target=watch_clipboard, args=(link,), daemon=True).start()
+    serve(link)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
