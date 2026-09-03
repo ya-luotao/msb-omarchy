@@ -1,0 +1,56 @@
+# Arch's aquamarine 0.14.0-2 PKGBUILD, plus the cursor-plane patch this VM needs.
+# Upstream: https://gitlab.archlinux.org/archlinux/packaging/packages/aquamarine
+# Maintainer: Caleb Maclennan <caleb@alerque.com>
+
+pkgname=aquamarine
+pkgver=0.14.0
+# Local rebuild of Arch's -2; drop this package once the patch is upstream.
+pkgrel=2.1
+pkgdesc='a very light linux rendering backend library'
+arch=(x86_64 aarch64)
+url="https://github.com/hyprwm/$pkgname"
+license=(BSD-3-Clause)
+depends=(libgcc
+         libstdc++
+         glibc # libc.so libm.so
+         hyprutils libhyprutils.so
+         hyprwayland-scanner
+         libdisplay-info libdisplay-info.so
+         libdrm # libdrm.so
+         libglvnd libEGL.so
+         libinput # libinput.so
+         mesa # libgbm.so
+         opengl-driver
+         pixman
+         seatd libseat.so
+         systemd-libs libudev.so
+         wayland libwayland-client.so
+         wayland-protocols)
+makedepends=(cmake)
+provides=("lib$pkgname.so")
+_archive="$pkgname-$pkgver"
+source=("$url/archive/v$pkgver/$_archive.tar.gz"
+        aquamarine-cursor-plane-hotspot.patch)
+sha256sums=('5dcf0b17f7dd51539fd7e79d68484f04240b3b63cf9f5f21d5b6dea0088168f9'
+            '3796b6a17581bfc898880eb8de2b2233a1e36e02ed89cfb6deb9107333a78f07')
+
+prepare() {
+	cd "$_archive"
+	# Without this aquamarine never sees the virtio-gpu cursor plane, so Hyprland
+	# draws the pointer into the scanout and every move costs a full frame flush.
+	patch -p1 < "$srcdir/aquamarine-cursor-plane-hotspot.patch"
+}
+
+build() {
+	cd "$_archive"
+	cmake -B build \
+		-D CMAKE_INSTALL_PREFIX=/usr \
+		-D CMAKE_BUILD_TYPE=Release
+	cmake --build build
+}
+
+package() {
+	cd "$_archive"
+	DESTDIR="$pkgdir" cmake --install build
+	install -Dm0644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE
+}

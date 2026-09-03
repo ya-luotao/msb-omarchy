@@ -19,7 +19,7 @@ Goal: the Quattro bar visible in Screen Sharing on the Mac.
 
 - [x] Guest rootfs: Arch Linux ARM base, `--init auto` → systemd, logind, udev — `guest/Dockerfile` on `menci/archlinuxarm:base`; SDDM autologin into the `omarchy` session (uwsm)
 - [x] Install Hyprland 0.56 + quickshell from ALARM; the real `omarchy` / `omarchy-settings` packages built with `makepkg` from omarchy-pkgs' PKGBUILDs (`OMARCHY_SRC` = omacom/omarchy @ 13f18b2); only 3 packages missing on aarch64 (`ttf-jetbrains-mono-nerd-basic` → `ttf-jetbrains-mono-nerd`, `xdg-terminal-exec` → wrapper, `yaru-icon-theme` skipped)
-- [x] Hyprland env: **no** `LIBGL_ALWAYS_SOFTWARE` (see assessment), `WLR_NO_HARDWARE_CURSORS=1`, `AQ_NO_MODIFIERS=1`, blur/shadows off, scale 1 on the virtio-gpu connector `Virtual-1`
+- [x] Hyprland env: **no** `LIBGL_ALWAYS_SOFTWARE` (see assessment), `AQ_NO_MODIFIERS=1`, blur/shadows off, scale 1 on the virtio-gpu connector `Virtual-1` (`WLR_NO_HARDWARE_CURSORS=1` dropped 2026-08-31: nothing reads it — see assessment)
 - [x] wayvnc as a user service on `graphical-session.target`; `bin/run` publishes `127.0.0.1:5901` (macOS Screen Sharing owns 5900)
 - [x] Desktop screenshot: `docs/images/m1-omarchy-desktop.png` (grim inside the guest)
 - [x] A VNC client on the Mac shows the same desktop — `bin/vnc-shot` pulls a full 1920x1080 RAW frame from `127.0.0.1:5901` in 0.2 s (`open vnc://127.0.0.1:5901` for Screen Sharing)
@@ -42,6 +42,7 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m0 build> bin/run -d --displa
 
 ## Later
 
+- Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done
 - Audio via `snd` (PipeWire)
 - [x] Clipboard between host and guest — text both ways while `msb display` is open: a `msb-clipboard` user service in the guest talks newline-delimited JSON over vsock port 5910 to an in-process backend owned by the display server, which relays it to the viewer as `ServerMsg::Clipboard` / `ViewerMsg::Clipboard`; the viewer uses `arboard` for the macOS pasteboard. Images are not carried yet, but the wire format has a `mime` field for them.
 - Multiple outputs

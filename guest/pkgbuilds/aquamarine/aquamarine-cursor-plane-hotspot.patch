@@ -1,0 +1,106 @@
+Enumerate and program the virtualized cursor plane
+
+virtio-gpu, vmwgfx and qxl set DRIVER_CURSOR_HOTSPOT, and the kernel then hides
+the cursor plane from any atomic client that has not set
+DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT: drm_mode_getplane_res() skips cursor planes
+outright for such clients (drm_plane.c), because a client that positions the
+plane by its top-left corner would put the guest's pointer in the wrong place.
+
+aquamarine only sets UNIVERSAL_PLANES and ATOMIC, so on those drivers it sees no
+cursor plane at all, never advertises a pointer capability, and the compositor
+silently falls back to a software cursor -- which on a virtual GPU costs a full
+scanout flush per pointer move.
+
+Set the cap once atomic is confirmed, and program HOTSPOT_X/Y alongside CRTC_X/Y
+on the cursor plane. The existing CRTC_X/Y math (cursorPos - cursorHotspot) is
+unchanged and stays correct for real hardware; the hotspot properties are what
+let a virtualized driver recover the pointer position as CRTC_X/Y + HOTSPOT_X/Y.
+The properties are already in the plane property table but were never written.
+Both the shape and the move path set them, so a pointer move alone carries the
+hotspot too. The legacy path already passes the hotspot via drmModeSetCursor2
+and is untouched. Older kernels reject the cap; that is logged and ignored.
+
+Equivalent to KWin's 7fdf0fb792 and bd2728fac1.
+--- a/include/aquamarine/backend/DRM.hpp
++++ b/include/aquamarine/backend/DRM.hpp
+@@ -486,6 +486,7 @@
+             Hyprutils::Math::Vector2D cursorSize;
+             bool                      supportsAsyncCommit     = false;
+             bool                      supportsAddFb2Modifiers = false;
++            bool                      supportsCursorHotspot   = false;
+             bool                      supportsTimelines       = false;
+         } drmProps;
+ 
+--- a/include/aquamarine/backend/drm/Atomic.hpp
++++ b/include/aquamarine/backend/drm/Atomic.hpp
+@@ -31,6 +31,7 @@
+         void add(uint32_t id, uint32_t prop, uint64_t val);
+         void planeProps(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Memory::CSharedPointer<CDRMFB> fb, uint32_t crtc, Hyprutils::Math::Vector2D pos);
+         void planePropsPos(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Math::Vector2D pos);
++        void planePropsHotspot(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Math::Vector2D hotspot);
+ 
+         void rollback(SDRMConnectorCommitData& data);
+         void apply(SDRMConnectorCommitData& data);
+--- a/src/backend/drm/DRM.cpp
++++ b/src/backend/drm/DRM.cpp
+@@ -550,6 +550,17 @@
+         impl                         = makeShared<CDRMAtomicImpl>(self.lock());
+         drmProps.supportsAsyncCommit = drmGetCap(gpu->fd, DRM_CAP_ATOMIC_ASYNC_PAGE_FLIP, &cap) == 0 && cap == 1;
+         atomic                       = true;
++
++        // Virtualized drivers (virtio-gpu, vmwgfx, qxl) set DRIVER_CURSOR_HOTSPOT, and the kernel
++        // then hides the cursor plane from any atomic client that has not promised to program its
++        // hotspot properties -- drm_mode_getplane_res() skips it entirely. Without this cap the
++        // cursor plane is invisible to us and we silently fall back to a software cursor, which
++        // costs the guest a full scanout flush per pointer move. Older kernels reject the cap;
++        // that is not fatal, it just means there is no hotspot-gated plane to unhide.
++        if (drmSetClientCap(gpu->fd, DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT, 1))
++            backend->log(AQ_LOG_DEBUG, "drm: DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT unsupported");
++        else
++            drmProps.supportsCursorHotspot = true;
+     }
+ 
+     backend->log(AQ_LOG_DEBUG, std::format("drm: drmProps.supportsAsyncCommit: {}", drmProps.supportsAsyncCommit));
+--- a/src/backend/drm/impl/Atomic.cpp
++++ b/src/backend/drm/impl/Atomic.cpp
+@@ -139,6 +139,23 @@
+     add(plane->id, plane->props.values.crtc_y, (uint64_t)(int64_t)pos.y);
+ }
+ 
++void Aquamarine::CDRMAtomicRequest::planePropsHotspot(Hyprutils::Memory::CSharedPointer<SDRMPlane> plane, Hyprutils::Math::Vector2D hotspot) {
++
++    if (failed)
++        return;
++
++    // Only virtualized drivers expose these, and only to clients that set
++    // DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT. The host needs the hotspot because the guest's pointer
++    // position is CRTC_X/Y + HOTSPOT_X/Y -- CRTC_X/Y alone is the image's top-left corner.
++    if (!plane->props.values.hotspot_x || !plane->props.values.hotspot_y)
++        return;
++
++    TRACE(backend->log(AQ_LOG_TRACE, std::format("atomic planeProps: hotspot blobs: hotspot_x {}, hotspot_y {}", plane->props.values.hotspot_x, plane->props.values.hotspot_y)));
++
++    add(plane->id, plane->props.values.hotspot_x, (uint64_t)(int64_t)hotspot.x);
++    add(plane->id, plane->props.values.hotspot_y, (uint64_t)(int64_t)hotspot.y);
++}
++
+ void Aquamarine::CDRMAtomicRequest::setConnector(Hyprutils::Memory::CSharedPointer<SDRMConnector> connector) {
+     conn = connector;
+ }
+@@ -269,10 +286,14 @@
+             if (data.committed & COutputState::AQ_OUTPUT_STATE_CURSOR_SHAPE) {
+                 if (!connector->output->cursorVisible)
+                     planeProps(connector->crtc->cursor, nullptr, 0, {});
+-                else
++                else {
+                     planeProps(connector->crtc->cursor, data.cursorFB, connector->crtc->id, connector->output->cursorPos - connector->output->cursorHotspot);
+-            } else if (connector->output->cursorVisible)
++                    planePropsHotspot(connector->crtc->cursor, connector->output->cursorHotspot);
++                }
++            } else if (connector->output->cursorVisible) {
+                 planePropsPos(connector->crtc->cursor, connector->output->cursorPos - connector->output->cursorHotspot);
++                planePropsHotspot(connector->crtc->cursor, connector->output->cursorHotspot);
++            }
+         }
+     } else
+         planeProps(connector->crtc->cursor, nullptr, 0, {});

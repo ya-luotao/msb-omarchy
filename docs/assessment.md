@@ -45,12 +45,70 @@ Setup: microsandbox `main` @ 5b1c63d9 on a branch (`gpu-m0`), `crates/runtime/Ca
 
 - **Pipeline**: `docker build --platform linux/arm64` on `menci/archlinuxarm:base` → `docker save` → `msb load` → `msb run --init auto`. systemd is PID 1 (`is-system-running` = `running`), agentd still configures eth0 + DNS and serves `msb exec`/`msb cp`. pacman 7 needs `DisableSandbox` inside Docker (Landlock cannot be applied there).
 - **Session**: SDDM with `[Autologin] User=omarchy Session=omarchy` starts `uwsm start … Hyprland` on tty1/seat0 without any extra work; the microVM has a VT (`tty1` active) and logind hands the DRM device to the session. No `/dev/input` exists (no virtio-input yet); Hyprland does not mind and wayvnc injects input through the virtual-keyboard/pointer protocols.
-- **Rendering — the one real trap**: with `LIBGL_ALWAYS_SOFTWARE=1` (what omarchy-arm-utm ships for UTM) mesa's `eglQueryDevicesEXT` returns only the software device, so aquamarine's `eglDeviceFromDRMFD` finds no device whose `EGL_DRM_DEVICE_FILE_EXT` is `/dev/dri/card0` and logs `CDRMRenderer(drm): Can't create renderer, no matching devices found`; Hyprland then runs with no renderer. `MESA_LOADER_DRIVER_OVERRIDE=kms_swrast` fixes the compositor but breaks Wayland clients (Qt/quickshell crash with `DRM_IOCTL_MODE_CREATE_DUMB failed: Permission denied` because clients get the render node). With **neither** variable set, mesa 26.2 on this device already falls back to llvmpipe by itself — `kms_swrast` for the compositor (`CDRMRenderer(drm): Using device /dev/dri/card0`) and `swrast` for Wayland clients (`eglinfo -p wayland` → llvmpipe). Keep `WLR_NO_HARDWARE_CURSORS=1` and `AQ_NO_MODIFIERS=1`.
-- **Environment changes need a sandbox restart**, not `systemctl restart sddm`: the user's `systemd --user` instance keeps the old environment and uwsm re-imports it.
+- **Rendering — the one real trap**: with `LIBGL_ALWAYS_SOFTWARE=1` (what omarchy-arm-utm ships for UTM) mesa's `eglQueryDevicesEXT` returns only the software device, so aquamarine's `eglDeviceFromDRMFD` finds no device whose `EGL_DRM_DEVICE_FILE_EXT` is `/dev/dri/card0` and logs `CDRMRenderer(drm): Can't create renderer, no matching devices found`; Hyprland then runs with no renderer. `MESA_LOADER_DRIVER_OVERRIDE=kms_swrast` fixes the compositor but breaks Wayland clients (Qt/quickshell crash with `DRM_IOCTL_MODE_CREATE_DUMB failed: Permission denied` because clients get the render node). With **neither** variable set, mesa 26.2 on this device already falls back to llvmpipe by itself — `kms_swrast` for the compositor (`CDRMRenderer(drm): Using device /dev/dri/card0`) and `swrast` for Wayland clients (`eglinfo -p wayland` → llvmpipe). Keep `AQ_NO_MODIFIERS=1`.
+- **Hardware cursor**: see the section below; the guest keeps its software cursor for now.
+- **Environment changes need a sandbox restart**, not `systemctl restart sddm`: the user's `systemd --user` instance keeps the old environment and uwsm re-imports it. Without restarting the VM, `loginctl terminate-user omarchy` between stopping and starting sddm is what actually clears it.
 - **Result**: Hyprland 0.56.1 on `Virtual-1` 1920x1080@59.98, quickshell (Omarchy shell) stable, wayvnc listening on 5900 in the guest, idle CPU ≈1.5 % for Hyprland. Screenshot via `grim` inside the guest: `docs/images/m1-omarchy-desktop.png`. Remaining shell warnings are expected in this image: no NetworkManager backend, no bluez.
 - **Host-side proof**: `bin/vnc-shot` (a 60-line RFB client, RAW encoding) receives the full frame through the msb port forward in 0.2 s. `vncdotool capture` connects but never completes a frame against wayvnc; not investigated further.
 - **Host port**: macOS Screen Sharing (`com.apple.screensharing`) answers `RFB 003.889` on 127.0.0.1:5900 when enabled, so `bin/run` publishes the guest's 5900 on host **5901**.
 - **Operational**: an `msb exec` fed from stdin (`cmd < file`) hung and left later execs hanging until the sandbox was restarted; pass scripts inline (heredoc in `bash -c`) and use `msb cp` for files.
+
+## Hardware cursor (2026-08-31): host side done, guest keeps the software cursor
+
+Pointer motion alone costs **45.5 full 1920x1080 scanout flushes/s**, because
+the guest draws its pointer into the scanout and the kernel forces full-plane
+flushes on page flips (`virtgpu_plane.c:91-97`). A virtio-gpu cursor plane
+should make pointer motion free. The host side now does; the guest does not.
+
+**The device and the ABI work.** `msb_krun_display` gained
+`KRUN_DISPLAY_FEATURE_CURSOR` (`set_cursor`/`move_cursor`), the device serves
+the cursor queue, and the runtime forwards image and position to `msb display`.
+Driving the plane directly with `modetest -C`, no compositor involved:
+**113 cursor images/s and 206 moves/s at 0 frames/s** — the pointer moves for
+free, which is the whole point.
+
+**The kernel hides the plane from aquamarine.** virtio_gpu sets
+`DRIVER_CURSOR_HOTSPOT`, and `drm_mode_getplane_res()` (`drm_plane.c:808-812`)
+skips cursor planes for any atomic client that has not set
+`DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT` — a client that positions the plane by its
+top-left corner would misplace the guest's pointer. aquamarine 0.14 sets only
+`UNIVERSAL_PLANES` and `ATOMIC`, so it sees no cursor plane, advertises no
+pointer capability, and Hyprland silently software-renders.
+`guest/pkgbuilds/aquamarine/` carries a patch that sets the cap and programs
+`HOTSPOT_X`/`HOTSPOT_Y`; with it, aquamarine logs `drm: Plane 33 has type 2`,
+`plane[33]` binds to `crtc-0` with an `AR24` fb, and the device receives
+Hyprland's real 64x64 cursor with its `(3,1)` hotspot. `cursor:use_cpu_buffer`
+was never needed — the GBM path works here.
+
+**Cursor pixels needed two fixes on the way through.** The guest allocates its
+cursor as a dumb buffer, and Linux creates the host resource with a hardcoded
+`DRM_FORMAT_HOST_XRGB8888` whatever the framebuffer's format is
+(`virtgpu_gem.c:78`), so an `AR24` cursor arrives as an alpha-less `X` resource
+whose pixels do carry alpha — dropping it drew an opaque black box around the
+pointer. The device now maps each `X` format to its `A` twin on the cursor path,
+as QEMU does by ignoring the resource format entirely
+(`hw/display/virtio-gpu.c:44`). The pixels are also premultiplied: of Hyprland's
+182 antialiased edge pixels, **0 had a colour channel above its alpha** before
+the fix and **28 after** the runtime un-premultiplies them, which is what
+winit's `CustomCursor::from_rgba` expects.
+
+**But Hyprland renders a frame per cursor move, so it is a regression.** Same
+boot, same sweep: software cursor **45.5 frames/s**, patched hardware cursor
+**73.6 frames/s** against 74 pointer moves/s — 1:1 with the input rate, plus
+73.6 `MOVE_CURSOR`/s, with 0 frames/s idle either way. The cause is upstream
+behaviour, not the plane: `CMonitor::shouldSkipScheduleFrameOnMouseEvent()`
+(`Monitor.cpp:1161-1179`) only skips the frame when adaptive sync is on, so
+without VRR every hardware-cursor move reaches aquamarine's
+`CDRMAtomicImpl::moveCursor` with `skipSchedule=false`, which calls
+`scheduleFrame(AQ_SCHEDULE_CURSOR_MOVE)` → a full `renderMonitor` into a fresh
+swapchain buffer (`GLRenderer.cpp:108-109`) → `fb != old fb`
+(`virtgpu_plane.c:203-208`) → a full flush. `CDRMAtomicRequest::addConnector`
+(`Atomic.cpp:216-238`) adds the primary plane to every commit regardless. Fixing
+it means cursor-only commits in Hyprland/aquamarine (KWin already does plane-
+selective commits, `drm_pipeline.cpp:64-83`) — an upstream change, out of scope
+here.
+
+So the patch stays an unwired artifact and the image keeps the software cursor.
 
 ## M2 progress (2026-08-30): host-side 2D scanout works
 
