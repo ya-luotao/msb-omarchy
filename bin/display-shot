@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Grab the latest scanout frame of a running sandbox as PNG (needs Pillow).
+
+    bin/display-shot <sandbox> [out.png] [--key COMBO ...] [--delay S]
+
+Speaks the newline-JSON protocol of the sandbox's `display.sock`: pixels never
+cross the socket, so the server only says which slot of the shared scanout file
+is fresh and this reads that slot. `--key super+k` presses the modifiers first
+and releases them in reverse; `--delay` (0.5s) is how long to wait afterwards
+for the guest to present the result.
+
+The display server serves one viewer at a time (`gpu_display/mod.rs`: `attach`
+overwrites the single viewer slot). Connecting here displaces a running
+`msb display <sandbox>`: that window keeps its last frame and never updates
+again, so it has to be relaunched afterwards.
+"""
+import hashlib, json, os, socket, sys, time
+from PIL import Image
+
+KEYS = {"escape": 1, "esc": 1, "backspace": 14, "tab": 15, "enter": 28, "return": 28,
+        "ctrl": 29, "control": 29, "shift": 42, "alt": 56, "space": 57, "super": 125,
+        "meta": 125, "up": 103, "left": 105, "right": 106, "down": 108, "f11": 87, "f12": 88}
+KEYS.update({c: 16 + i for i, c in enumerate("qwertyuiop")})
+KEYS.update({c: 30 + i for i, c in enumerate("asdfghjkl")})
+KEYS.update({c: 44 + i for i, c in enumerate("zxcvbnm")})
+KEYS.update({c: 2 + i for i, c in enumerate("1234567890")})
+KEYS.update({"f%d" % (i + 1): 59 + i for i in range(10)})
+RAW = {"BGRX": ("RGB", "BGRX"), "BGRA": ("RGBA", "BGRA")}  # virtio-gpu names bytes in memory order
+
+a, keys, delay, pos = sys.argv[1:], [], 0.5, []
+i = 0
+while i < len(a):
+    if a[i] in ("--key", "--delay") and i + 1 < len(a):
+        if a[i] == "--key": keys.append(a[i + 1])
+        else: delay = float(a[i + 1])
+        i += 2
+    else:
+        pos.append(a[i]); i += 1
+if not pos or pos[0].startswith("-"): sys.exit(__doc__)
+name, out = pos[0], pos[1] if len(pos) > 1 else "display.png"
+combos = []
+for spec in keys:
+    codes = []
+    for part in spec.lower().split("+"):
+        if part not in KEYS: sys.exit("unknown key %r in %r" % (part, spec))
+        codes.append(KEYS[part])
+    combos.append((spec, codes))
+
+# ipc.rs: the canonical socket dir is the first 12 bytes of sha256(name), hex.
+path = os.path.expanduser("~/.microsandbox/run/sandboxes/%s/display.sock"
+                          % hashlib.sha256(name.encode()).hexdigest()[:24])
+if not os.path.exists(path): sys.exit("no %s; is %r running with MSB_GPU=1?" % (path, name))
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(path)
+sys.stderr.write("display-shot: took the viewer slot; a running `msb display %s` is now frozen\n" % name)
+buf = bytearray()
+def msg(timeout):
+    """The next server message, or None once `timeout` seconds pass."""
+    end = time.time() + timeout
+    while True:
+        nl = buf.find(b"\n")
+        if nl >= 0:
+            line = bytes(buf[:nl]); del buf[:nl + 1]
+            return json.loads(line)
+        left = end - time.time()
+        if left <= 0: return None
+        s.settimeout(left)
+        try: chunk = s.recv(1 << 16)
+        except socket.timeout: return None
+        if not chunk: raise EOFError("display server closed the connection")
+        buf.extend(chunk)
+def send(m): s.sendall(json.dumps(m).encode() + b"\n")
+
+# The server replays Hello and a Configure per scanout on attach, but no Frame:
+# until the guest presents again the fresh slot is unknown, hence the slot 0
+# fallback the reference viewer also starts from.
+cfg = None
+while cfg is None:
+    m = msg(10)
+    if m is None: sys.exit("no scanout 0 configured after 10s")
+    if m["t"] == "hello": print("connected to", m["sandbox"])
+    elif m["t"] == "configure" and m["scanout"] == 0: cfg = m
+for spec, codes in combos:
+    for code in codes: send({"t": "key", "code": code, "down": True}); time.sleep(0.05)
+    for code in reversed(codes): send({"t": "key", "code": code, "down": False}); time.sleep(0.05)
+    print("sent", spec, codes)
+slot, end = None, time.time() + delay
+while time.time() < end:
+    m = msg(end - time.time())
+    if m is None: break
+    if m.get("scanout") != 0: continue
+    if m["t"] == "frame": slot = m["slot"]
+    elif m["t"] == "configure": cfg, slot = m, None
+    elif m["t"] == "disable": sys.exit("the guest turned scanout 0 off")
+# Frames presented while the window was closing are still queued on the socket;
+# taking the newest announcement now keeps the read off a slot the guest is
+# about to rewrite. Bounded, so a guest that never stops presenting (an
+# animation, a video) cannot hold this open.
+end = time.time() + 0.2
+while time.time() < end:
+    m = msg(end - time.time())
+    if m is None: break
+    if m.get("scanout") == 0 and m["t"] == "frame": slot = m["slot"]
+
+w, h, fmt = cfg["width"], cfg["height"], cfg["format"]
+if fmt not in RAW: sys.exit("unsupported scanout format " + fmt)
+size = w * h * 4
+if slot is None:
+    print("no frame presented in %.1fs, reading slot 0" % delay); slot = 0
+with open(cfg["path"], "rb") as f:
+    f.seek(slot * size)
+    data = f.read(size)
+s.close()
+if len(data) != size: sys.exit("short frame: %d of %d bytes in %s" % (len(data), size, cfg["path"]))
+mode, raw = RAW[fmt]
+Image.frombytes(mode, (w, h), data, "raw", raw).convert("RGB").save(out)
+print("scanout 0", "%dx%d" % (w, h), fmt, "slot", slot, "->", out)
