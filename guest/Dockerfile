@@ -60,6 +60,11 @@ RUN cp -a /etc/skel-omarchy/. /home/omarchy/ && rm -rf /etc/skel-omarchy \
 # What went in: pacman is unpinned (Arch Linux ARM keeps no archive), so the
 # image records its own package list next to the omarchy commit it was built from.
 COPY build/versions /usr/share/msb-omarchy/versions
-RUN pacman -Q > /usr/share/msb-omarchy/packages
+RUN pacman -Q > /usr/share/msb-omarchy/packages \
+ && ldconfig && systemd-hwdb update && journalctl --update-catalog \
+ && touch /etc/.updated /var/.updated
+# The last line is what systemd-update-done.service would do on first boot: with
+# the stamps newer than /usr, ldconfig/hwdb/catalog/sysusers/update-done skip
+# (ConditionNeedsUpdate), about 0.5 s of every boot. Nothing may touch /usr after it.
 
 CMD ["/bin/bash"]

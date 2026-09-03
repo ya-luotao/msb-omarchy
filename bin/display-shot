@@ -11,8 +11,8 @@ for the guest to present the result.
 
 The display server serves one viewer at a time (`gpu_display/mod.rs`: `attach`
 overwrites the single viewer slot). Connecting here displaces a running
-`msb display <sandbox>`: that window keeps its last frame and never updates
-again, so it has to be relaunched afterwards.
+`msb display <sandbox>`: the server shuts its connection down and the window
+exits, so relaunch it afterwards.
 """
 import hashlib, json, os, socket, sys, time
 from PIL import Image
