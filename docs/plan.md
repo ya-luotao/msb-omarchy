@@ -46,6 +46,7 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m3 build> bin/run -d --displa
 - [x] New guest image loaded through `docker save | msb load` (stdin works; only `--input /dev/stdin` fails) and verified on the Mac: clipboard both ways, virtio-snd card + `pw-play` without errors, keyboard/pointer, 4 vCPUs
 - [x] Guest follows omarchy-pkgs: `bin/build-rootfs` reads `_commit` from the PKGBUILD (4.0.2 @ 346e69e1), the image records `/usr/share/msb-omarchy/{versions,packages}`
 - [x] `bin/display-shot`: headless screenshot + key injection over `display.sock`, the seed of a graphical test runner
+- [x] Half-drawn frames: Hyprland commits before llvmpipe finished rasterizing (its software-renderer `glFinish` guard keys on the DRM driver name, not on llvmpipe); `LP_NUM_THREADS=0` on the compositor unit closes the race, a one-line Hyprland patch would be the better fix (assessment, "Half-drawn frames")
 - [x] CI: `.github/workflows/guest-image.yml` builds the image on `ubuntu-24.04-arm` (no HVF there, so no boot test)
 - [x] Boot: the image pre-runs ldconfig/hwdb/catalog and stamps `/etc/.updated`, `graphical.target` 2.8 s → 2.3 s; the desktop session is up 5.6 s after `msb run` returns, SDDM itself costs ~40 ms so it stays
 
