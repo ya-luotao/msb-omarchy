@@ -29,6 +29,10 @@ t0 = time.time(); painted = 0
 while painted < w * h and time.time() - t0 < 60:
     s.sendall(struct.pack(">BBHHHH", 3, 1 if painted else 0, 0, 0, w, h))
     mt = rd(1)[0]
+    if mt == 2:  # Bell
+        continue
+    if mt == 3:  # ServerCutText: wayvnc sends the guest clipboard on connect
+        rd(3); rd(struct.unpack(">I", rd(4))[0]); continue
     if mt != 0:
         print("unexpected message type", mt); break
     rd(1); nrects = struct.unpack(">H", rd(2))[0]

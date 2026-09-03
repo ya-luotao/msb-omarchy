@@ -12,14 +12,17 @@ This is the opposite direction from [omarchy-microsandbox](https://github.com/ya
 
 ## Quick start
 
-Needs an Apple Silicon Mac, Docker (arm64 images), and an `msb` built from the [`gpu-m0` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m0) — the virtio-gpu display, `msb display` and the three small `msb_krun` fixes live there while the upstream PRs are open (libkrun [#116](https://github.com/superradcompany/libkrun/pull/116), [#117](https://github.com/superradcompany/libkrun/pull/117), [#118](https://github.com/superradcompany/libkrun/pull/118); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482)). Build recipe in [docs/plan.md](docs/plan.md), M0. `bin/build-rootfs` clones the Omarchy sources it needs.
+Needs an Apple Silicon Mac, Docker (arm64 images), and an `msb` built from the [`gpu-m3` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m3) — the virtio-gpu display, `msb display`, clipboard, virtio-snd audio and the small `msb_krun` fixes live there while the upstream PRs are open (`gpu-m0` is the display-only subset that microsandbox #1482 tracks) (libkrun [#116](https://github.com/superradcompany/libkrun/pull/116), [#117](https://github.com/superradcompany/libkrun/pull/117), [#118](https://github.com/superradcompany/libkrun/pull/118); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482)). Either build it (recipe in [docs/plan.md](docs/plan.md), M0) or take the fork's prebuilt binary from [release v0.6.16-gpu-m3.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.6.16-gpu-m3.1); both need `brew install slp/krun/virglrenderer`. `bin/build-rootfs` clones the Omarchy sources it needs and builds the image the omarchy-pkgs PKGBUILD pins (4.0.2 today).
 
 ```sh
 bin/build-rootfs      # Docker image from Arch Linux ARM + the omarchy packages, loaded into msb
 bin/run -d --display  # msb run --init auto … -p 127.0.0.1:5901:5900 --display: native window with keyboard and pointer
 msb display omarchy   # reopen the window later
 open vnc://127.0.0.1:5901   # or VNC
+bin/display-shot omarchy shot.png --key super+k   # headless: press keys, grab the scanout as PNG
 ```
+
+`bin/run` sets `MSB_SND=1`, so the guest has a virtio-snd card and PipeWire plays through the Mac's default output. The guest's wayvnc listens without authentication on its own port 5900; `bin/run` publishes it on the Mac's loopback only (`127.0.0.1:5901`), so it is reachable by other users of the same Mac and nobody else.
 
 Text copied in the desktop lands on the Mac pasteboard and vice versa while the `msb display` window is open; `MSB_DISPLAY_CLIPBOARD=0 msb display omarchy` turns that off in both directions.
 

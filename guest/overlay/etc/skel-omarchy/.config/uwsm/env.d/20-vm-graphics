@@ -1,3 +1,2 @@
-# WLR_NO_HARDWARE_CURSORS dropped: wlroots-only, nothing here reads it.
+# WLR_* variables dropped: wlroots-only, nothing here reads them.
 export AQ_NO_MODIFIERS=1
-export WLR_RENDERER_ALLOW_SOFTWARE=1

@@ -3,6 +3,9 @@
 #   MSB_OMARCHY_SRC   omarchy checkout (default ~/.cache/msb-omarchy/omarchy)
 #   MSB_OMARCHY_PKGS  omarchy-pkgs checkout with pkgbuilds/ (default ~/.cache/msb-omarchy/omarchy-pkgs)
 #   MSB               msb binary (default ~/.microsandbox/bin/msb)
+#   NO_LOAD=1         build only, skip `msb load` (CI)
+# The omarchy commit is whatever the omarchy-pkgs PKGBUILD pins (`_commit`), so
+# updating the omarchy-pkgs checkout is the one thing that moves the image forward.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${MSB_OMARCHY_SRC:-$HOME/.cache/msb-omarchy/omarchy}
@@ -10,22 +13,31 @@ PKGS=${MSB_OMARCHY_PKGS:-$HOME/.cache/msb-omarchy/omarchy-pkgs}
 MSB=${MSB:-$HOME/.microsandbox/bin/msb}
 TAG=${TAG:-msb-omarchy:dev}
 
-# The image is built from the commit omarchy-pkgs 4.0.1 pins; fetch both trees if absent.
-if [ ! -d "$SRC" ]; then
-  git clone --filter=blob:none https://github.com/omacom/omarchy.git "$SRC"
-  git -C "$SRC" checkout 13f18b2cb7286fb54f87daf571a031aa6af3d8f0
-fi
 if [ ! -d "$PKGS/pkgbuilds/omarchy" ]; then
   git clone --filter=blob:none --sparse https://github.com/omacom-io/omarchy-pkgs.git "$PKGS"
   git -C "$PKGS" sparse-checkout set pkgbuilds/omarchy pkgbuilds/omarchy-settings
 fi
+commit=$(sed -n "s/^_commit='\([0-9a-f]*\)'.*/\1/p" "$PKGS/pkgbuilds/omarchy/PKGBUILD")
+pkgver=$(sed -n 's/^pkgver=\(.*\)/\1/p' "$PKGS/pkgbuilds/omarchy/PKGBUILD")
+[ -n "$commit" ] || { echo "no _commit in $PKGS/pkgbuilds/omarchy/PKGBUILD" >&2; exit 1; }
+
+if [ ! -d "$SRC" ]; then
+  git clone --filter=blob:none https://github.com/omacom/omarchy.git "$SRC"
+fi
+git -C "$SRC" cat-file -e "$commit^{commit}" 2>/dev/null || git -C "$SRC" fetch -q origin
+git -C "$SRC" checkout -q "$commit"
 
 stage=$ROOT/guest/build
 rm -rf "$stage" && mkdir -p "$stage/pkgbuilds"
 rsync -a --exclude .git "$SRC/" "$stage/omarchy/"
 rsync -a "$PKGS/pkgbuilds/omarchy" "$PKGS/pkgbuilds/omarchy-settings" "$stage/pkgbuilds/"
-echo "omarchy source: $(git -C "$SRC" rev-parse --short HEAD) ($(cat "$SRC/version"))"
+{
+  echo "omarchy $commit ($(cat "$SRC/version"), omarchy-pkgs $pkgver @ $(git -C "$PKGS" rev-parse --short HEAD))"
+  echo "msb-omarchy $(git -C "$ROOT" rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)"
+} > "$stage/versions"
+cat "$stage/versions"
 
 docker build --platform linux/arm64 -t "$TAG" "$ROOT/guest"
-docker save "$TAG" -o "$stage/image.tar"
-"$MSB" load --input "$stage/image.tar"
+[ "${NO_LOAD:-}" = 1 ] && exit 0
+# msb load buffers stdin to a temporary file itself; no image.tar on disk.
+docker save "$TAG" | "$MSB" load

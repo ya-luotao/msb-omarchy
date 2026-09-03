@@ -38,12 +38,20 @@ Goal: `msb run omarchy` opens a macOS window with keyboard and pointer.
 - [x] `msb run --display` starts the viewer after boot and turns the GPU on for that sandbox (microsandbox commit ce4d2d5f); `bin/run -d --display`
 - [x] Upstream PRs opened 2026-08-30: libkrun [#116](https://github.com/superradcompany/libkrun/pull/116) (macOS eventfd flags), [#117](https://github.com/superradcompany/libkrun/pull/117) (2D-only virtio-gpu + scanout read-back), [#118](https://github.com/superradcompany/libkrun/pull/118) (display/input builder methods); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482) (draft: display server, `msb display`, `--display`) — to be rebased onto #1194's `--gpu` option once the crates are published
 
-Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m0 build> bin/run -d --display`.
+Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m3 build> bin/run -d --display`.
+
+## M3 — consolidate what exists (2026-09-03)
+
+- [x] `gpu-m3` on the fork = `gpu-m0` + fork PRs #1 (frame path), #2 (hide the Mac cursor over the scanout), #3 (clipboard), #4 (virtio-snd), #5 (cursor plane); `gpu-m0` stays the display-only subset behind microsandbox #1482
+- [x] New guest image loaded through `docker save | msb load` (stdin works; only `--input /dev/stdin` fails) and verified on the Mac: clipboard both ways, virtio-snd card + `pw-play` without errors, keyboard/pointer, 4 vCPUs
+- [x] Guest follows omarchy-pkgs: `bin/build-rootfs` reads `_commit` from the PKGBUILD (4.0.2 @ 346e69e1), the image records `/usr/share/msb-omarchy/{versions,packages}`
+- [x] `bin/display-shot`: headless screenshot + key injection over `display.sock`, the seed of a graphical test runner
+- [ ] CI: build the guest image on GitHub's arm64 Linux runner (no HVF there, so no boot test)
 
 ## Later
 
 - Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done
-- Audio via `snd` (PipeWire)
+- [x] Audio via `snd` — the vendored device only had a PipeWire host backend (Linux-only in practice), so the `gpu-m3` branch adds a cpal/CoreAudio backend and `MSB_SND=1`; `pw-play` in the guest reaches the Mac's default output (fork PR [#4](https://github.com/ya-luotao/microsandbox/pull/4))
 - [x] Clipboard between host and guest — text both ways while `msb display` is open: a `msb-clipboard` user service in the guest talks newline-delimited JSON over vsock port 5910 to an in-process backend owned by the display server, which relays it to the viewer as `ServerMsg::Clipboard` / `ViewerMsg::Clipboard`; the viewer uses `arboard` for the macOS pasteboard. Images are not carried yet, but the wire format has a `mime` field for them.
 - Multiple outputs
 - Whether any of this can become Omarchy's own graphical test runner on Macs

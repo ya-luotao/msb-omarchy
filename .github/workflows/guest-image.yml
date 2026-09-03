@@ -1,0 +1,28 @@
+name: guest image
+
+# Builds the Omarchy guest image on GitHub's arm64 Linux runner. There is no
+# Hypervisor.framework on hosted macOS runners, so the image is only built, not
+# booted; the desktop checks stay manual (docs/plan.md).
+on:
+  push:
+    branches: [main]
+    paths: [guest/**, bin/build-rootfs, .github/workflows/guest-image.yml]
+  pull_request:
+    paths: [guest/**, bin/build-rootfs, .github/workflows/guest-image.yml]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: NO_LOAD=1 bin/build-rootfs
+        env:
+          MSB_OMARCHY_SRC: ${{ runner.temp }}/omarchy
+          MSB_OMARCHY_PKGS: ${{ runner.temp }}/omarchy-pkgs
+      - name: What went in
+        run: |
+          docker run --rm --platform linux/arm64 msb-omarchy:dev sh -c \
+            'cat /usr/share/msb-omarchy/versions; pacman -Q omarchy omarchy-settings hyprland aquamarine quickshell mesa'

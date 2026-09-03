@@ -22,6 +22,8 @@ RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf \
  && pacman -Scc --noconfirm
 
 # Build the omarchy + omarchy-settings packages from the staged source tree.
+# `--nodeps` twice is pacman's -dd: skip all dependency checks, not just versions
+# (omarchy depends on omarchy-keyring, limine-* and an AUR font that do not exist here).
 RUN useradd -m build && echo 'build ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/build
 COPY --chown=build:build build/omarchy /src/omarchy
 COPY --chown=build:build build/pkgbuilds /src/pkgbuilds
@@ -54,5 +56,10 @@ RUN cp -a /etc/skel-omarchy/. /home/omarchy/ && rm -rf /etc/skel-omarchy \
  && systemctl enable sddm.service \
  && systemctl set-default graphical.target \
  && systemctl mask plymouth-start.service plymouth-quit.service plymouth-quit-wait.service systemd-firstboot.service
+
+# What went in: pacman is unpinned (Arch Linux ARM keeps no archive), so the
+# image records its own package list next to the omarchy commit it was built from.
+COPY build/versions /usr/share/msb-omarchy/versions
+RUN pacman -Q > /usr/share/msb-omarchy/packages
 
 CMD ["/bin/bash"]
