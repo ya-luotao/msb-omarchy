@@ -12,12 +12,12 @@ This is the opposite direction from [omarchy-microsandbox](https://github.com/ya
 
 ## Quick start
 
-Needs an Apple Silicon Mac, Docker (arm64 images), and an `msb` built from the [`gpu-m3` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m3) — the virtio-gpu display, `msb display`, clipboard, virtio-snd audio and the small `msb_krun` fixes live there while the upstream PRs are open (`gpu-m0` is the display-only subset that microsandbox #1482 tracks) (libkrun [#116](https://github.com/superradcompany/libkrun/pull/116), [#117](https://github.com/superradcompany/libkrun/pull/117), [#118](https://github.com/superradcompany/libkrun/pull/118); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482)). Either build it (recipe in [docs/plan.md](docs/plan.md), M0) or take the fork's prebuilt binary from [release v0.6.16-gpu-m3.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.6.16-gpu-m3.1); both need `brew install slp/krun/virglrenderer`. `bin/build-rootfs` clones the Omarchy sources it needs and builds the image the omarchy-pkgs PKGBUILD pins (4.0.2 today).
+Needs an Apple Silicon Mac and an `msb` built from the [`gpu-m3` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m3) — the virtio-gpu display, `msb display`, clipboard, virtio-snd audio and the small `msb_krun` fixes live there while the upstream PRs are open (`gpu-m0` is the display-only subset that microsandbox #1482 tracks) (libkrun [#116](https://github.com/superradcompany/libkrun/pull/116), [#117](https://github.com/superradcompany/libkrun/pull/117), [#118](https://github.com/superradcompany/libkrun/pull/118); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482)). Either build it (recipe in [docs/plan.md](docs/plan.md), M0) or take the fork's prebuilt binary from [release v0.6.16-gpu-m3.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.6.16-gpu-m3.1); both need `brew install slp/krun/virglrenderer`. The guest image is published as `ghcr.io/ya-luotao/msb-omarchy` (tag = the Omarchy version the omarchy-pkgs PKGBUILD pins, 4.0.2 today); building it yourself needs Docker with arm64 images, `bin/build-rootfs` clones the Omarchy sources it needs.
 
 ```sh
-bin/build-rootfs      # Docker image from Arch Linux ARM + the omarchy packages, loaded into msb
-bin/run -d --display  # msb run --init auto … -p 127.0.0.1:5901:5900 --display: native window with keyboard and pointer
-msb display omarchy   # reopen the window later
+msb pull ghcr.io/ya-luotao/msb-omarchy:4.0.2       # or: bin/build-rootfs (Docker image from Arch Linux ARM + the omarchy packages, loaded into msb)
+TAG=ghcr.io/ya-luotao/msb-omarchy:4.0.2 bin/run -d --display   # msb run --init auto … -p 127.0.0.1:5901:5900 --display: native window with keyboard and pointer
+msb display omarchy   # reopen the window later (TAG defaults to msb-omarchy:dev, what bin/build-rootfs produces)
 open vnc://127.0.0.1:5901   # or VNC
 bin/display-shot omarchy shot.png --key super+k   # headless: press keys, grab the scanout as PNG
 ```
