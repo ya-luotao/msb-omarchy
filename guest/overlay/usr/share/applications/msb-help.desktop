@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Omarchy on Mac
+Comment=Keyboard shortcuts, shared files and desktop controls
+Exec=msb-help
+Icon=help-browser
+Categories=Utility;

@@ -1,79 +1,269 @@
 # msb-omarchy
 
-Run the [Omarchy](https://omarchy.org) desktop — Hyprland + the Quattro Quickshell shell — inside a [microsandbox](https://github.com/superradcompany/microsandbox) microVM on an Apple Silicon Mac, with graphics.
+**An Omarchy desktop on your Apple Silicon Mac.**
 
-> Status: **M2 works** (2026-08-30) — the Omarchy Quattro desktop runs inside a microsandbox microVM on Apple Silicon, shows up in a native macOS window via `msb display`, and takes keyboard and pointer input. See [docs/plan.md](docs/plan.md) for the milestones and [docs/assessment.md](docs/assessment.md) for the evidence behind them.
+msb-omarchy runs [Omarchy](https://omarchy.org)'s Hyprland + Quattro desktop inside a [microsandbox](https://github.com/superradcompany/microsandbox) Linux microVM, with a native macOS window, persistent guest storage and a directory shared with your Mac.
 
-![Omarchy in a native macOS window via msb display](docs/images/m2-native-window.png)
+The project combines a pinned graphics runtime with an Arch Linux ARM guest image and a small set of host commands. Desktop configuration, application defaults and lifecycle management live in this repository; using them requires no upstream source changes.
 
-*`msb run --display`: the Omarchy desktop in a native macOS window, with the keybindings cheatsheet opened from the Mac keyboard (Super+K). Over VNC instead: [docs/images/m1-omarchy-desktop.png](docs/images/m1-omarchy-desktop.png).*
+[Quick start](#quick-start) · [Daily use](#daily-use) · [Configuration](#configuration) · [Validation](#validation) · [Architecture](#architecture)
 
-This is the opposite direction from [omarchy-microsandbox](https://github.com/ya-luotao/omarchy-microsandbox), which is an Omarchy bar plugin for managing microsandbox VMs. This repo puts Omarchy *inside* the VM.
+![Omarchy desktop with Chinese input and files shared with macOS](docs/images/m4-desktop.png)
+
+*An actual guest screenshot: Foot with Pinyin input, Nautilus and the shared directory.*
+
+## What you get
+
+- **A persistent desktop.** Create a VM once, close and reopen its window, or stop and resume it with files and settings preserved.
+- **Native Mac integration.** The graphics runtime provides a macOS display window, keyboard and pointer input, text clipboard synchronization and audio output.
+- **A desktop tuned for software rendering.** Two display profiles, larger text, opaque windows and disabled window animations, blur and shadows.
+- **Useful applications from the first boot.** Chromium, Nautilus, Foot, CJK fonts and Fcitx5 Pinyin, with working default browser and file-manager associations.
+- **Explicit file sharing.** A writable Shared directory, accessible from the top bar and the file-manager sidebar.
+- **An isolated runtime.** Checksummed runtime and firmware downloads, with project-local VM state independent of a global microsandbox installation.
+- **Recorded validation.** Launcher and release tests, guest image checks, Mac smoke tests, screenshots and measurements tied to the tested image.
+
+**Status:** experimental desktop integration for Apple Silicon. The current guest has passed both display-profile smoke tests on a Mac. The latest experience layer must be built locally; the configured prebuilt fallback is the earlier Omarchy 4.0.2 baseline. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
 
 ## Quick start
 
-Needs an Apple Silicon Mac and an `msb` built from the [`gpu-m3` branch of microsandbox](https://github.com/ya-luotao/microsandbox/tree/gpu-m3) — the virtio-gpu display, `msb display`, clipboard, virtio-snd audio and the small `msb_krun` fixes live there while the upstream PRs are open (`gpu-m0` is the display-only subset that microsandbox #1482 tracks) (libkrun [#116](https://github.com/superradcompany/libkrun/pull/116), [#117](https://github.com/superradcompany/libkrun/pull/117), [#118](https://github.com/superradcompany/libkrun/pull/118); microsandbox [#1482](https://github.com/superradcompany/microsandbox/pull/1482)). Either build it (recipe in [docs/plan.md](docs/plan.md), M0) or take the fork's prebuilt binary from [release v0.6.16-gpu-m3.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.6.16-gpu-m3.1); both need `brew install slp/krun/virglrenderer`. The guest image is published as `ghcr.io/ya-luotao/msb-omarchy` (tag = the Omarchy version the omarchy-pkgs PKGBUILD pins, 4.0.2 today); building it yourself needs Docker with arm64 images, `bin/build-rootfs` clones the Omarchy sources it needs.
+### Requirements
+
+| Component | Requirement |
+| --- | --- |
+| Host | Apple Silicon Mac with Hypervisor.framework support |
+| Tools | Git, Python 3.9+, Homebrew and the macOS `curl` / `codesign` commands |
+| Image build | A running Docker engine capable of building `linux/arm64` images |
+| Host libraries | `slp/krun/virglrenderer`, `molten-vk` and `libepoxy` |
+| Storage | Space for Docker layers, the runtime cache and each VM's writable disk |
+
+Each VM defaults to **4 vCPUs, 4G RAM and a 16G writable disk**. Docker is used to build and load the image; the desktop itself runs through microsandbox and macOS virtualization.
+
+### Install and launch
 
 ```sh
-msb pull ghcr.io/ya-luotao/msb-omarchy:4.0.2       # or: bin/build-rootfs (Docker image from Arch Linux ARM + the omarchy packages, loaded into msb)
-TAG=ghcr.io/ya-luotao/msb-omarchy:4.0.2 bin/run -d --display   # msb run --init auto … -p 127.0.0.1:5901:5900 --display: native window with keyboard and pointer
-msb display omarchy   # reopen the window later (TAG defaults to msb-omarchy:dev, what bin/build-rootfs produces)
-open vnc://127.0.0.1:5901   # or VNC
-bin/display-shot omarchy shot.png --key super+k   # headless: press keys, grab the scanout as PNG
+git clone https://github.com/ya-luotao/msb-omarchy.git
+cd msb-omarchy
+
+brew install slp/krun/virglrenderer molten-vk libepoxy
+
+bin/setup          # Download and verify the pinned runtime and firmware
+bin/doctor         # Check the selected runtime and host support
+bin/build-rootfs   # Build, validate and load the guest image
+bin/run            # Create the desktop and open its native window
 ```
 
-`bin/run` sets `MSB_SND=1`, so the guest has a virtio-snd card and PipeWire plays through the Mac's default output. The guest's wayvnc listens without authentication on its own port 5900; `bin/run` publishes it on the Mac's loopback only (`127.0.0.1:5901`), so it is reachable by other users of the same Mac and nobody else.
+Setup and image building are first-time steps. Afterward, use **`bin/run`** to return to the desktop. The launcher waits for the desktop shell to respond before opening the window.
 
-Text copied in the desktop lands on the Mac pasteboard and vice versa while the `msb display` window is open; `MSB_DISPLAY_CLIPBOARD=0 msb display omarchy` turns that off in both directions.
+A successfully checked and loaded image becomes this checkout's default for **new** VMs. Existing VMs retain their disk and settings. Skipping `bin/build-rootfs` uses the pinned, published 4.0.2 baseline, which does not contain the applications and desktop refinements shown above.
 
-`msb exec omarchy -- journalctl -b` and `msb cp omarchy:/path …` work as usual while the desktop runs.
+## Daily use
 
-## Why
+| Action | Command or behavior |
+| --- | --- |
+| Create, resume or reopen the default desktop | `bin/run` |
+| Start it without opening a window | `bin/run --no-display` |
+| Close the window | The VM and its applications keep running |
+| Stop the VM | `bin/stop` — files and settings remain; running applications close |
+| List this project's VMs | `bin/msb list` |
+| Capture the current desktop | `bin/screenshot omarchy desktop.png` |
+| Check runtime and host support | `bin/doctor` |
 
-Nobody has shown a full Linux desktop running inside libkrun/microsandbox on a Mac. The closest existing routes to Omarchy-on-Mac go through Virtualization.framework (lume) or QEMU + HVF. A microVM that boots in seconds and opens a native window would be a new thing.
+Use **`bin/msb`** for low-level commands in this project. Plain `msb` addresses your separate global installation.
 
-## Shape of the project
+### Separate desktops
 
+Give each desktop a name and each concurrently running VM a different forwarded VNC port:
+
+```sh
+VNC_PORT=5902 bin/run --name work --profile standard
+bin/stop --name work
+bin/run --name work
 ```
-Mac (Apple Silicon)
-└── msb run omarchy                      ← microsandbox, HVF backend
-    ├── virtio-gpu (2D scanout) ──────── M1: wayvnc → -p 5900 → Screen Sharing
-    │                                    M2: krun_display → native macOS window
-    ├── virtio-input ──────────────────── M2: keyboard / pointer
-    └── guest: Arch Linux ARM rootfs
-        ├── systemd (msb --init auto), seatd/logind
-        ├── Hyprland 0.56 on virtio-gpu KMS, llvmpipe (LIBGL_ALWAYS_SOFTWARE=1)
-        └── Omarchy Quattro shell (quickshell), packages per omarchy-arm-utm
+
+The VM keeps its original display profile, image, shared path and resource settings. Rebuilding the image prepares a new default; it does not migrate existing desktops.
+
+Reset is a separate, explicit operation:
+
+```sh
+bin/reset --name work --yes
 ```
 
-Two pieces live in other repos and will be contributed there:
+This deletes that VM's guest disk and launcher settings. Files in the host Shared directory remain available.
 
-- **microsandbox**: enable `msb_krun`'s existing `gpu` / `input` Cargo features in `crates/runtime` and add the host-side display plumbing. The guest kernel (libkrunfw 6.12, aarch64) already ships `CONFIG_DRM_VIRTIO_GPU=y`, `CONFIG_VIRTIO_INPUT=y`, `CONFIG_SND_VIRTIO=y`.
-- **omarchy** (upstream): anything that turns out to be a genuine aarch64 or headless fix.
+### Keyboard and first launch
 
-This repo holds the guest image build, the run scripts, the docs, and the findings.
+The Mac **Command key (⌘)** maps to **Super** inside Omarchy.
 
-## Milestones
+| Shortcut | Action |
+| --- | --- |
+| ⌘ + Enter | Open a terminal |
+| ⌘ + K | Browse keyboard shortcuts |
+| ⌘ + Shift + Enter | Open the browser |
+| ⌘ + Shift + F | Open the file manager |
+| Ctrl + Space | Switch English / Chinese Pinyin input |
 
-| | Goal | Proof |
-|---|---|---|
-| M0 ✅ | `/dev/dri/card0` appears in a guest with `gpu` enabled | `modetest -M virtio_gpu -s 37@36:1920x1080` succeeds (KMS on, connector Virtual-1) |
-| M1 ✅ | Omarchy desktop visible over VNC | `bin/run` + `vnc://127.0.0.1:5901` shows the Quattro bar |
-| M2 ✅ | Native macOS window | `msb run --display` opens a window; Super+K opens the cheatsheet from the host keyboard |
+Click the top-left logo for the menu. The one-time welcome links to a Mac guide, also available through **Learn → Omarchy on Mac**. macOS shortcuts such as Spotlight can take precedence over guest shortcuts.
 
-## Hard constraints (read before designing around them)
+Chromium may ask you to create a keyring password on its first launch to protect saved browser credentials.
 
-- Hyprland cannot run with zero DRM devices: aquamarine's headless backend has no allocator (`drmFD() == -1`), so a virtio-gpu node is mandatory even for software rendering. Upstream issue [#7917](https://github.com/hyprwm/Hyprland/issues/7917) is closed as not planned.
-- Software rendering over virtio-gpu KMS is the proven path (it is what Hyprland's own CI does). Venus/virgl acceleration on Apple Silicon is not proven; the plan does not depend on it.
-- omarchy-pkgs publishes no aarch64 database; roughly 17 of 148 base packages must be built from source (per omarchy-arm-utm).
-- The virtio-gpu cursor plane works on the host side (device, ABI and viewer), but Omarchy keeps its software cursor: Hyprland renders a frame per cursor move without VRR, so a hardware cursor is currently slower. See [docs/assessment.md](docs/assessment.md) and `guest/pkgbuilds/aquamarine/`.
+## Display profiles
 
-## Related
+| Profile | Output resolution | Desktop scale | Use |
+| --- | --- | --- | --- |
+| `light` — default | 1600 × 900 | 1.25 | Lower rendering cost for everyday interaction |
+| `standard` | 1920 × 1080 | 1.25 | More workspace for multiple applications |
 
-- [ggalancs/omarchy-arm-utm](https://github.com/ggalancs/omarchy-arm-utm) — Omarchy Quattro on Arch Linux ARM under UTM; the package list and the software-rendering settings come from here
-- [microsandbox docs: VNC desktop](https://docs.microsandbox.dev/examples/development/vnc-desktop) — the existing framebuffer + port-forward pattern M1 follows
-- [libkrun display API](https://github.com/libkrun/libkrun) (1.15+) — reference for M2's host window
+Profiles are selected when creating a VM. The light profile renders **30.6% fewer pixels**; UI scaling by itself does not reduce the output pixel count.
+
+Both profiles use a larger shell font, a 12pt terminal font, opaque windows and a compact top bar with workspaces, time, shared files, tray and audio. Window animations, blur and shadows are disabled. The existing compositor-only `LP_NUM_THREADS=0` workaround is retained to avoid partially drawn software-rendered frames.
+
+In the [recorded Mac test](docs/experience.md), create-to-ready took 5.07 seconds for light and 5.67 seconds for standard. Scripted pointer movement produced approximately 60 and 45 scanout announcements per second, respectively. These are single-run observations on an M3 Pro, not end-to-end latency measurements or a guarantee for other machines.
+
+## Files, clipboard and audio
+
+### Shared files
+
+By default, `Shared/` in the project checkout is mounted at `~/Shared` inside the guest. The top-bar folder and file-manager bookmark open that location.
+
+```sh
+SHARED_DIR="$HOME/Projects/my-project" VNC_PORT=5903 bin/run --name project
+```
+
+The mount maps guest UID/GID 1000 so files can be read and written from either side. Only the selected directory is shared. Documents elsewhere in the guest home remain on that VM's disk.
+
+Shared paths are saved when a VM is created. Keep the checkout and shared directory at stable paths; runtime state and shared mounts are not automatically relocated when the repository moves.
+
+### Clipboard and sound
+
+Text clipboard synchronization works while the native display window is open. To disable it for the viewer:
+
+```sh
+MSB_DISPLAY_CLIPBOARD=0 bin/run
+```
+
+Clipboard images are not supported. Audio uses the graphics runtime's virtio-snd and CoreAudio path to the Mac's output device.
+
+### VNC
+
+VNC is available at `vnc://127.0.0.1:5901` for the default desktop. The guest listener has no authentication; the launcher forwards it only to the Mac's loopback interface. Set `VNC_PORT` when creating another VM to avoid a port conflict.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    CLI["Project commands<br/>bin/run · bin/msb"] --> Runtime["Pinned microsandbox runtime<br/>macOS Hypervisor.framework"]
+    Runtime <--> Viewer["Native macOS window<br/>Display · keyboard · pointer"]
+    Runtime <--> Guest["Arch Linux ARM guest<br/>systemd · Hyprland · Quattro"]
+    Shared["Mac Shared directory"] <--> Guest
+```
+
+The host runtime boots the guest using macOS virtualization. The guest renders through software OpenGL and virtio-gpu KMS; the display server exposes scanout frames to the native viewer and sends input back to the guest. Clipboard and audio use the existing gpu-m3 integrations.
+
+The image recipe adds this repository's applications and configuration to an immutable Omarchy 4.0.2 base. Before and after installing packages, it verifies that Hyprland, Aquamarine, Mesa, Quickshell and Qt base remain at their original versions.
+
+`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the existing [gpu-m3 graphics build](https://github.com/ya-luotao/microsandbox/tree/gpu-m3); a stock global microsandbox binary may not include its display command.
+
+## Configuration
+
+These settings apply when creating a VM. `--name` and `--profile` take precedence over their environment defaults.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NAME` | `omarchy` | VM name |
+| `PROFILE` | `light` | Display profile |
+| `CPUS` | `4` | Virtual CPU count |
+| `MEMORY` | `4G` | Guest memory |
+| `ROOT_DISK` | `16G` | Writable guest disk capacity |
+| `SHARED_DIR` | Checkout's `Shared/` | Directory shared with the guest |
+| `VNC_PORT` | `5901` | Loopback VNC port on the Mac |
+| `TAG` | Last successfully built and loaded image, otherwise the pinned baseline | Image for a new VM; also overrides the build tag |
+| `MSB_GPU_DISPLAY` | Profile resolution | Advanced output-size override, e.g. `1600x900` |
+
+Advanced runtime overrides are `MSB` for the binary, `MSB_LIBKRUNFW_PATH` for firmware and `MSB_HOME` for state. The default state directory is `.runtime/home/`. The project explicitly selects its own configuration file, so global microsandbox configuration is not inherited.
+
+## Validation
+
+```sh
+bin/check
+bin/smoke --profile light
+bin/smoke --profile standard
+```
+
+| Check | What it establishes |
+| --- | --- |
+| `bin/check` | Launcher persistence and failure handling, release gates, script syntax, JSON and whitespace checks |
+| Image build checks | Required commands, application associations, fonts, generated theme, terminal configuration and shared libraries |
+| `bin/smoke` | A real Mac VM boots, maps application windows, shares files in both directions and retains files after stop/start |
+| `bin/publish --check` | The current local image matches passing smoke reports for both profiles |
+
+Smoke tests create independent VMs with their own shared directories and retain reports and screenshots under `test-runs/`. By default, successful test VMs are stopped and their disks are retained; `--keep` leaves them running for inspection.
+
+The [2026-09-13 validation record](docs/experience.md) contains 16 passing local tests, both Mac smoke reports, image identity, screenshots and measurements. CI runs the local checks and builds the guest on arm64 Linux, retaining package and image metadata. Hosted CI does not establish the Mac desktop result.
+
+### Inspect and troubleshoot
+
+```sh
+bin/msb logs omarchy --tail 100
+bin/msb exec omarchy -- journalctl -b
+bin/screenshot omarchy desktop.png
+```
+
+Readiness failures retain the VM for inspection and retry. Concurrent lifecycle operations are rejected; retry after the active operation finishes. If the selected runtime lacks display support or a library is missing, `bin/doctor` reports the problem; use the prerequisites and `bin/setup` to restore the pinned installation.
+
+For graphics diagnostics on a test VM:
+
+```sh
+bin/measure-display TEST_VM
+bin/display-shot TEST_VM menu.png --key super+space
+```
+
+Both diagnostics attach to the single `display.sock` viewer slot and **close any existing native viewer for that VM**. Reopen it with `bin/msb display TEST_VM`. `bin/display-shot` requires Pillow. Normal `bin/screenshot` uses guest `grim` and does not displace the viewer.
+
+## Building and publishing
+
+```sh
+bin/build-rootfs                          # Build, check and load
+NO_LOAD=1 bin/build-rootfs                # Build and check only
+TAG=msb-omarchy:experiment bin/build-rootfs
+```
+
+Every image records package versions, the base digest, source revision and a hash of the guest build inputs under `/usr/share/msb-omarchy/`. The application repository is still rolling: a future build may resolve different application packages or fail dependency checks. Preserve the tested image as the release artifact.
+
+After building and passing both Mac smoke profiles, maintainers can publish using an existing Docker registry login:
+
+```sh
+bin/publish --check
+bin/publish
+```
+
+Publication tags the exact tested local image ID and pushes it without rebuilding. A changed image or missing profile evidence blocks publication. Promoting a release for fresh checkouts is a separate step: update the `image` field in `config/release.json` to the published immutable digest.
+
+The configured fallback currently remains the earlier 4.0.2 baseline. Follow the full quick start to obtain the current experience layer.
+
+## Current boundaries
+
+- Apple Silicon macOS is the supported desktop host. Hardware-accelerated rendering, cursor-only commits and multiple outputs remain future work.
+- Guest autologin is enabled. Automatic guest locking and the screensaver are disabled; host screen locking still applies. Configure a guest password and Omarchy's idle plugin before enabling guest locking.
+- The guest time zone remains UTC by default.
+- The latest smoke checks confirm clipboard and input services. Audible output, fresh end-to-end Mac clipboard transfers and physical keyboard/trackpad feel were not rechecked in that validation pass.
+
+## Project map
+
+| Path | Contents |
+| --- | --- |
+| `bin/` | Setup, lifecycle, build, capture, validation and release commands |
+| `lib/omarchy.py` | Host runtime selection, VM lifecycle and release validation |
+| `config/release.json` | Runtime, firmware, image and upstream provenance pins |
+| `guest/Dockerfile` | Image build and graphics-package preservation checks |
+| `guest/overlay/` | Guest configuration, applications' defaults and integration helpers |
+| `tests/` | Launcher and publication-gate tests |
+| `docs/` | Milestones, experiments, screenshots and recorded validation |
+| `.runtime/`, `Shared/`, `build/`, `test-runs/` | Local runtime state, shared files and generated artifacts; ignored by Git |
+
+Further reading: [milestones](docs/plan.md), [graphics experiments](docs/assessment.md), [desktop validation](docs/experience.md) and the [unused Aquamarine cursor-plane patch](guest/pkgbuilds/aquamarine/README.md). The original full Arch bootstrap recipe remains in the Git history.
+
+This project complements [omarchy-microsandbox](https://github.com/ya-luotao/omarchy-microsandbox), the Omarchy plugin for managing VMs. Here, the Omarchy desktop itself runs inside the VM.
 
 ## License
 
-MIT
+[MIT](LICENSE). Included runtime and guest software retain their respective upstream licenses.

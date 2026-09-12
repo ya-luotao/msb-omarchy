@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "idle": {
+    "screensaver": 0,
+    "lock": 0
+  },
+  "bar": {
+    "position": "top",
+    "transparent": false,
+    "centerAnchor": "omarchy.clock",
+    "layout": {
+      "left": [
+        {
+          "id": "omarchy.menu"
+        },
+        {
+          "id": "omarchy.workspaces"
+        }
+      ],
+      "center": [
+        {
+          "id": "omarchy.clock",
+          "format": "ddd HH:mm",
+          "formatAlt": "d MMM yyyy"
+        }
+      ],
+      "right": [
+        {
+          "id": "msb.shared",
+          "type": "command",
+          "exec": "printf '󰉋'",
+          "interval": 600,
+          "tooltip": "Shared with your Mac",
+          "onClick": "nautilus \"$HOME/Shared\""
+        },
+        {
+          "id": "omarchy.tray"
+        },
+        {
+          "id": "omarchy.audio"
+        }
+      ]
+    }
+  },
+  "disabledPlugins": [
+    "omarchy.idle"
+  ],
+  "plugins": []
+}

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Run a bounded command in the actual desktop session (also from msb exec).
+set -euo pipefail
+if (( EUID == 0 )); then
+  uid=$(id -u omarchy)
+  exec runuser -u omarchy -- env "XDG_RUNTIME_DIR=/run/user/$uid" \
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus" "$0" "$@"
+fi
+export OMARCHY_PATH=/usr/share/omarchy
+while IFS='=' read -r key value; do
+  case "$key" in
+    WAYLAND_DISPLAY|HYPRLAND_INSTANCE_SIGNATURE|DISPLAY) export "$key=$value" ;;
+  esac
+done < <(systemctl --user show-environment)
+exec "$@"

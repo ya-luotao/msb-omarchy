@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Measure scanout announcements under scripted pointer motion (not display latency).
+Attaches the one display.sock viewer slot and closes an existing native viewer.
+"""
+import argparse
+import hashlib
+import json
+import math
+from pathlib import Path
+import select
+import socket
+import statistics
+import sys
+import time
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from omarchy import Desktop
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("sandbox")
+parser.add_argument("--seconds", type=float, default=8)
+args = parser.parse_args()
+if not 2 <= args.seconds <= 30:
+    parser.error("--seconds must be between 2 and 30")
+path = Desktop().state_dir / "run/sandboxes" / hashlib.sha256(args.sandbox.encode()).hexdigest()[:24] / "display.sock"
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(10)
+sock.connect(str(path))
+print("Attached the display viewer slot; reopen bin/msb display afterwards.", file=sys.stderr)
+buffer = bytearray()
+geometry = None
+def receive(timeout):
+    global geometry
+    if select.select([sock], [], [], timeout)[0]:
+        chunk = sock.recv(65536)
+        if not chunk:
+            raise SystemExit("Display server disconnected")
+        buffer.extend(chunk)
+    messages = []
+    while b"\n" in buffer:
+        line, _, rest = buffer.partition(b"\n")
+        buffer[:] = rest
+        message = json.loads(line)
+        if message["t"] == "configure" and message["scanout"] == 0:
+            geometry = {key: message[key] for key in ("width", "height", "format")}
+        messages.append(message)
+    return messages
+deadline = time.monotonic() + 10
+while geometry is None and time.monotonic() < deadline:
+    receive(0.1)
+if geometry is None:
+    raise SystemExit("No scanout was configured")
+start = time.monotonic()
+next_input = start
+frames = []
+inputs = 0
+last_sequence = None
+while time.monotonic() - start < args.seconds + 2:
+    now = time.monotonic()
+    if now >= next_input:
+        elapsed = now - start
+        msg = {"t": "abs", "x": round(16384 + 8000 * math.sin(elapsed * 3)),
+               "y": round(16384 + 3500 * math.cos(elapsed * 2))}
+        sock.sendall(json.dumps(msg).encode() + b"\n")
+        if elapsed >= 2:
+            inputs += 1
+        next_input += 1 / 60
+    for msg in receive(max(0, min(0.02, next_input - time.monotonic()))):
+        if msg["t"] == "frame" and msg.get("scanout") == 0:
+            sequence = msg.get("seq")
+            if sequence != last_sequence and time.monotonic() - start >= 2:
+                frames.append(time.monotonic())
+            last_sequence = sequence
+sock.close()
+intervals = [(right - left) * 1000 for left, right in zip(frames, frames[1:])]
+result = {"sandbox": args.sandbox, "geometry": geometry, "warmup_seconds": 2,
+          "sample_seconds": args.seconds, "pointer_events": inputs, "frames": len(frames),
+          "frames_per_second": round(len(frames) / args.seconds, 2),
+          "median_frame_interval_ms": round(statistics.median(intervals), 2) if intervals else None}
+print(json.dumps(result, indent=2))

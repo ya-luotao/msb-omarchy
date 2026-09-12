@@ -1,0 +1,250 @@
+{
+  "smoke": {
+    "sandbox": "omarchy-smoke-20260912-192053-c885",
+    "profile": "light",
+    "checks": [
+      "desktop shell ready",
+      "image entry points and libraries",
+      "Hyprland config",
+      "display profile",
+      "finished-frame workaround retained",
+      "clipboard service",
+      "input method service",
+      "Mac to guest shared files",
+      "guest to Mac shared files",
+      "browser, file manager and terminal windows",
+      "VM restarted",
+      "guest document persists",
+      "shared directory survives restart"
+    ],
+    "passed": true,
+    "create_to_ready_seconds": 5.07,
+    "versions": "base ghcr.io/ya-luotao/msb-omarchy@sha256:c53f79040e445f18e8e007b20a0af9756cf6e61d71a5321543470caaeac6290d\nmsb-omarchy c393805bd3cd954b15e7290ffb4312a370e14aa9-dirty\nbuild-input-sha256 0229f205cd90499db49efd966e689adcca74ff74b794675bc5cc418b9059d859\nimage msb-omarchy:4.0.2-1\nbuilt 2026-09-12T19:18:40.674205+00:00\n",
+    "image_id": "sha256:e5423bab020807d7f88fcb89bec8bfff4609e60f9eb1458367b954237d826bff",
+    "monitors": [
+      {
+        "id": 0,
+        "name": "Virtual-1",
+        "description": "Red Hat Inc. krun-display 0x00000001",
+        "make": "Red Hat, Inc.",
+        "model": "krun-display",
+        "serial": "0x00000001",
+        "width": 1600,
+        "height": 900,
+        "physicalWidth": 130,
+        "physicalHeight": 70,
+        "refreshRate": 59.99,
+        "x": 0,
+        "y": 0,
+        "activeWorkspace": {
+          "id": 1,
+          "name": "1"
+        },
+        "specialWorkspace": {
+          "id": 0,
+          "name": ""
+        },
+        "reserved": [
+          0,
+          35,
+          0,
+          0
+        ],
+        "scale": 1.25,
+        "transform": 0,
+        "focused": true,
+        "dpmsStatus": true,
+        "vrr": false,
+        "solitary": "0",
+        "solitaryBlockedBy": [
+          "WINDOWED",
+          "CANDIDATE"
+        ],
+        "activelyTearing": false,
+        "tearingBlockedBy": [
+          "NOT_TORN",
+          "USER",
+          "CANDIDATE"
+        ],
+        "directScanoutTo": "0",
+        "directScanoutBlockedBy": [
+          "USER",
+          "SW",
+          "CANDIDATE"
+        ],
+        "disabled": false,
+        "currentFormat": "XRGB8888",
+        "mirrorOf": "none",
+        "availableModes": [
+          "1600x900@59.99Hz",
+          "1920x1200@59.88Hz",
+          "1856x1160@60.97Hz",
+          "1680x1050@59.95Hz",
+          "1600x1000@62.94Hz",
+          "1440x900@59.89Hz",
+          "1400x875@60.97Hz",
+          "1280x800@61.95Hz",
+          "800x500@60.94Hz"
+        ],
+        "colorManagementPreset": "srgb",
+        "sdrBrightness": 1.0,
+        "sdrSaturation": 1.0,
+        "sdrMinLuminance": 0.2,
+        "sdrMaxLuminance": 80,
+        "hardwareCursorsInUse": true
+      }
+    ],
+    "clients": [
+      {
+        "address": "0xaaab183fc800",
+        "mapped": true,
+        "hidden": false,
+        "visible": true,
+        "acceptsInput": true,
+        "at": [
+          10,
+          45
+        ],
+        "size": [
+          624,
+          665
+        ],
+        "workspace": {
+          "id": 1,
+          "name": "1"
+        },
+        "floating": false,
+        "monitor": 0,
+        "class": "msb-smoke-terminal",
+        "title": "omarchy@omarchy-smoke-20260912-192053-c885:~",
+        "initialClass": "msb-smoke-terminal",
+        "initialTitle": "Omarchy on Mac",
+        "pid": 1424,
+        "xwayland": false,
+        "pinned": false,
+        "pinFullscreened": false,
+        "fullscreen": 0,
+        "fullscreenClient": 0,
+        "fullscreenHandler": "default",
+        "allowedOverFullscreen": true,
+        "grouped": [],
+        "tags": [
+          "default-opacity*"
+        ],
+        "swallowing": "0x0",
+        "focusHistoryID": 2,
+        "inhibitingIdle": false,
+        "xdgTag": "",
+        "xdgDescription": "",
+        "contentType": "none",
+        "tearingHint": false,
+        "stableId": "18000005"
+      },
+      {
+        "address": "0xaaab183429d0",
+        "mapped": true,
+        "hidden": false,
+        "visible": true,
+        "acceptsInput": true,
+        "at": [
+          646,
+          45
+        ],
+        "size": [
+          624,
+          327
+        ],
+        "workspace": {
+          "id": 1,
+          "name": "1"
+        },
+        "floating": false,
+        "monitor": 0,
+        "class": "org.gnome.Nautilus",
+        "title": "Shared",
+        "initialClass": "org.gnome.Nautilus",
+        "initialTitle": "Loading\u2026",
+        "pid": 1508,
+        "xwayland": false,
+        "pinned": false,
+        "pinFullscreened": false,
+        "fullscreen": 0,
+        "fullscreenClient": 0,
+        "fullscreenHandler": "default",
+        "allowedOverFullscreen": true,
+        "grouped": [],
+        "tags": [
+          "default-opacity*"
+        ],
+        "swallowing": "0x0",
+        "focusHistoryID": 1,
+        "inhibitingIdle": false,
+        "xdgTag": "",
+        "xdgDescription": "",
+        "contentType": "none",
+        "tearingHint": false,
+        "stableId": "18000006"
+      },
+      {
+        "address": "0xaaab18e93170",
+        "mapped": true,
+        "hidden": false,
+        "visible": true,
+        "acceptsInput": true,
+        "at": [
+          646,
+          384
+        ],
+        "size": [
+          624,
+          326
+        ],
+        "workspace": {
+          "id": 1,
+          "name": "1"
+        },
+        "floating": false,
+        "monitor": 0,
+        "class": "chromium",
+        "title": "about:blank - Chromium",
+        "initialClass": "chromium",
+        "initialTitle": "Untitled - Chromium",
+        "pid": 1594,
+        "xwayland": false,
+        "pinned": false,
+        "pinFullscreened": false,
+        "fullscreen": 0,
+        "fullscreenClient": 0,
+        "fullscreenHandler": "default",
+        "allowedOverFullscreen": true,
+        "grouped": [],
+        "tags": [
+          "chromium-based-browser*"
+        ],
+        "swallowing": "0x0",
+        "focusHistoryID": 0,
+        "inhibitingIdle": false,
+        "xdgTag": "",
+        "xdgDescription": "",
+        "contentType": "none",
+        "tearingHint": false,
+        "stableId": "18000007"
+      }
+    ],
+    "resume_to_ready_seconds": 4.76
+  },
+  "pointer": {
+    "sandbox": "omarchy-smoke-20260912-192053-c885",
+    "geometry": {
+      "width": 1600,
+      "height": 900,
+      "format": "BGRX"
+    },
+    "warmup_seconds": 2,
+    "sample_seconds": 8,
+    "pointer_events": 480,
+    "frames": 477,
+    "frames_per_second": 59.62,
+    "median_frame_interval_ms": 16.65
+  }
+}

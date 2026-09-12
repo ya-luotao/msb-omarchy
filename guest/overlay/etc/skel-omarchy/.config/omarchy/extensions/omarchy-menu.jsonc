@@ -1,0 +1,34 @@
+{
+  "learn.mac": {
+    "icon": "\uf11c",
+    "label": "Omarchy on Mac",
+    "action": "msb-help"
+  },
+  "setup.network": {
+    "label": "Mac Network",
+    "action": "msb-help"
+  },
+  "setup.input": {
+    "icon": "\uf11c",
+    "label": "Input Method",
+    "action": "fcitx5-configtool"
+  },
+  "system.suspend": {
+    "when": "false"
+  },
+  "system.hibernate": {
+    "when": "false"
+  },
+  "system.lock": {
+    "when": "false"
+  },
+  "system.screensaver": {
+    "when": "false"
+  },
+  "trigger.toggle.idle-lock": {
+    "when": "false"
+  },
+  "trigger.toggle.screensaver": {
+    "when": "false"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "runtime": {
+    "version": "0.6.16-gpu-m3.1",
+    "url": "https://github.com/ya-luotao/microsandbox/releases/download/v0.6.16-gpu-m3.1/msb-0.6.16-gpu-m3-aarch64-apple-darwin.tar.gz",
+    "sha256": "31e4fb7def29cf35d9fd1fe69f2945de95dcf2a47c5581d09e6ebf83dc4b74a2"
+  },
+  "firmware": {
+    "url": "https://github.com/superradcompany/microsandbox/releases/download/v0.6.16/libkrunfw-darwin-aarch64.dylib",
+    "sha256": "20b588c2031519cee3ad93fee4b2a0ca4805f2a3c721198911a6248fd34f65e0"
+  },
+  "image": "ghcr.io/ya-luotao/msb-omarchy@sha256:c53f79040e445f18e8e007b20a0af9756cf6e61d71a5321543470caaeac6290d",
+  "build_tag": "msb-omarchy:4.0.2-1",
+  "omarchy_commit": "346e69e1cec6c4e8924531874af6ba010a1bc99e",
+  "omarchy_pkgs_commit": "48e60a6539266accaeb866d6ef6cd2da4aed00e9",
+  "base_image": "ghcr.io/ya-luotao/msb-omarchy@sha256:c53f79040e445f18e8e007b20a0af9756cf6e61d71a5321543470caaeac6290d"
+}

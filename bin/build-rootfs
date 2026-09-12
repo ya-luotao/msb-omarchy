@@ -1,43 +1,46 @@
 #!/usr/bin/env bash
-# Build the Omarchy guest image with Docker (arm64) and load it into microsandbox.
-#   MSB_OMARCHY_SRC   omarchy checkout (default ~/.cache/msb-omarchy/omarchy)
-#   MSB_OMARCHY_PKGS  omarchy-pkgs checkout with pkgbuilds/ (default ~/.cache/msb-omarchy/omarchy-pkgs)
-#   MSB               msb binary (default ~/.microsandbox/bin/msb)
-#   NO_LOAD=1         build only, skip `msb load` (CI)
-# The omarchy commit is whatever the omarchy-pkgs PKGBUILD pins (`_commit`), so
-# updating the omarchy-pkgs checkout is the one thing that moves the image forward.
+# Build the experience layer on the immutable, verified Omarchy base image.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SRC=${MSB_OMARCHY_SRC:-$HOME/.cache/msb-omarchy/omarchy}
-PKGS=${MSB_OMARCHY_PKGS:-$HOME/.cache/msb-omarchy/omarchy-pkgs}
-MSB=${MSB:-$HOME/.microsandbox/bin/msb}
-TAG=${TAG:-msb-omarchy:dev}
-
-if [ ! -d "$PKGS/pkgbuilds/omarchy" ]; then
-  git clone --filter=blob:none --sparse https://github.com/omacom-io/omarchy-pkgs.git "$PKGS"
-  git -C "$PKGS" sparse-checkout set pkgbuilds/omarchy pkgbuilds/omarchy-settings
-fi
-commit=$(sed -n "s/^_commit='\([0-9a-f]*\)'.*/\1/p" "$PKGS/pkgbuilds/omarchy/PKGBUILD")
-pkgver=$(sed -n 's/^pkgver=\(.*\)/\1/p' "$PKGS/pkgbuilds/omarchy/PKGBUILD")
-[ -n "$commit" ] || { echo "no _commit in $PKGS/pkgbuilds/omarchy/PKGBUILD" >&2; exit 1; }
-
-if [ ! -d "$SRC" ]; then
-  git clone --filter=blob:none https://github.com/omacom/omarchy.git "$SRC"
-fi
-git -C "$SRC" cat-file -e "$commit^{commit}" 2>/dev/null || git -C "$SRC" fetch -q origin
-git -C "$SRC" checkout -q "$commit"
-
-stage=$ROOT/guest/build
-rm -rf "$stage" && mkdir -p "$stage/pkgbuilds"
-rsync -a --exclude .git "$SRC/" "$stage/omarchy/"
-rsync -a "$PKGS/pkgbuilds/omarchy" "$PKGS/pkgbuilds/omarchy-settings" "$stage/pkgbuilds/"
-{
-  echo "omarchy $commit ($(cat "$SRC/version"), omarchy-pkgs $pkgver @ $(git -C "$PKGS" rev-parse --short HEAD))"
-  echo "msb-omarchy $(git -C "$ROOT" rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)"
-} > "$stage/versions"
-cat "$stage/versions"
-
-docker build --platform linux/arm64 -t "$TAG" "$ROOT/guest"
-[ "${NO_LOAD:-}" = 1 ] && exit 0
-# msb load buffers stdin to a temporary file itself; no image.tar on disk.
-docker save "$TAG" | "$MSB" load
+DOCKER=${DOCKER:-$(command -v docker || true)}
+[[ -n "$DOCKER" ]] || DOCKER=/usr/local/bin/docker
+[[ -x "$DOCKER" ]] || { echo "Docker is missing; set DOCKER to its executable path." >&2; exit 1; }
+read_pin() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$ROOT/config/release.json" "$1"; }
+TAG=${TAG:-$(read_pin build_tag)}
+base=$(read_pin base_image)
+mkdir -p "$ROOT/guest/build"
+python3 - "$ROOT" "$TAG" "$base" <<'PY'
+import hashlib
+from pathlib import Path
+import subprocess
+import sys
+from datetime import datetime, timezone
+root = Path(sys.argv[1])
+digest = hashlib.sha256()
+inputs = [root / "guest/Dockerfile", root / "config/release.json", root / "bin/build-rootfs"]
+inputs += sorted(p for p in (root / "guest/overlay").rglob("*") if p.is_file())
+for path in inputs:
+    digest.update(str(path.relative_to(root)).encode() + b"\0" + path.read_bytes())
+head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+dirty = subprocess.check_output(["git", "-C", str(root), "status", "--porcelain"], text=True).strip()
+with (root / "guest/build/versions").open("w") as out:
+    out.write(f"base {sys.argv[3]}\n")
+    out.write(f"msb-omarchy {head}{'-dirty' if dirty else ''}\n")
+    out.write(f"build-input-sha256 {digest.hexdigest()}\n")
+    out.write(f"image {sys.argv[2]}\n")
+    out.write(f"built {datetime.now(timezone.utc).isoformat()}\n")
+PY
+"$DOCKER" build --platform linux/arm64 --build-arg "BASE_IMAGE=$base" -t "$TAG" "$ROOT/guest"
+"$DOCKER" run --rm --platform linux/arm64 "$TAG" /usr/local/bin/msb-image-check
+[[ "${NO_LOAD:-}" == 1 ]] && exit 0
+"$DOCKER" save "$TAG" | "$ROOT/bin/msb" load
+# Only a successfully checked AND loaded image becomes this checkout's default.
+python3 - "$ROOT" "$TAG" "$DOCKER" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "lib"))
+from omarchy import Desktop, write_json, execute, checksum
+image_id = execute([sys.argv[3], "image", "inspect", "--format", "{{.Id}}", sys.argv[2]], capture=True).stdout.strip()
+write_json(Desktop().state_dir / "omarchy/image.json", {"tag": sys.argv[2], "image_id": image_id, "versions_sha256": checksum(Path(sys.argv[1]) / "guest/build/versions")})
+PY
+echo "Image loaded. bin/run will use $TAG for new desktops."

@@ -16,6 +16,9 @@ exits, so relaunch it afterwards.
 """
 import hashlib, json, os, socket, sys, time
 from PIL import Image
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from omarchy import Desktop
 
 KEYS = {"escape": 1, "esc": 1, "backspace": 14, "tab": 15, "enter": 28, "return": 28,
         "ctrl": 29, "control": 29, "shift": 42, "alt": 56, "space": 57, "super": 125,
@@ -47,12 +50,11 @@ for spec in keys:
     combos.append((spec, codes))
 
 # ipc.rs: the canonical socket dir is the first 12 bytes of sha256(name), hex.
-path = os.path.expanduser("~/.microsandbox/run/sandboxes/%s/display.sock"
-                          % hashlib.sha256(name.encode()).hexdigest()[:24])
+path = str(Desktop().state_dir / "run/sandboxes" / hashlib.sha256(name.encode()).hexdigest()[:24] / "display.sock")
 if not os.path.exists(path): sys.exit("no %s; is %r running with MSB_GPU=1?" % (path, name))
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.connect(path)
-sys.stderr.write("display-shot: took the viewer slot; a running `msb display %s` is now frozen\n" % name)
+sys.stderr.write("display-shot: took the viewer slot; a running `msb display %s` has been closed\n" % name)
 buf = bytearray()
 def msg(timeout):
     """The next server message, or None once `timeout` seconds pass."""

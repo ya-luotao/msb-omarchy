@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Check the installed image's desktop entry points before it is loaded/published."""
+import configparser
+import json
+from pathlib import Path
+import pwd
+import shutil
+import subprocess
+import tomllib
+
+required = ("Hyprland", "omarchy-shell", "chromium", "nautilus", "foot", "fcitx5",
+            "grim", "wl-copy", "wl-paste", "msb-welcome", "msb-help")
+for command in required:
+    if not shutil.which(command):
+        raise SystemExit(f"Missing desktop command: {command}")
+user = pwd.getpwnam("omarchy")
+if user.pw_uid != 1000:
+    raise SystemExit("Shared directory requires guest UID 1000")
+user_dir = Path(user.pw_dir)
+for command in ("msb-welcome", "msb-help"):
+    subprocess.run(["bash", "-n", str(Path("/usr/local/bin") / command)], check=True)
+shell = json.loads((user_dir / ".config/omarchy/shell.json").read_text())
+if shell["version"] != 1:
+    raise SystemExit("Unknown shell configuration version")
+mime = configparser.ConfigParser()
+mime.read(user_dir / ".config/mimeapps.list")
+for kind in ("x-scheme-handler/https", "inode/directory"):
+    desktop = mime["Default Applications"][kind]
+    if not (Path("/usr/share/applications") / desktop).is_file():
+        raise SystemExit(f"Default application is missing: {desktop}")
+subprocess.run(["pacman", "-Q", "hyprland", "aquamarine", "mesa", "quickshell",
+                "chromium", "nautilus", "noto-fonts-cjk", "fcitx5-chinese-addons"], check=True)
+theme = user_dir / ".local/state/omarchy/current/theme"
+if not (theme / "shell.toml").is_file() or not (theme / "foot.ini").is_file():
+    raise SystemExit("Default theme was not generated")
+tomllib.loads((theme / "shell.toml").read_text())
+if "{{" in (theme / "shell.toml").read_text():
+    raise SystemExit("Default theme still contains unresolved template tokens")
+foot_check = subprocess.run(["runuser", "-u", "omarchy", "--", "foot", "--check-config"],
+                            capture_output=True, text=True)
+if foot_check.returncode or "deprecated" in foot_check.stderr.lower():
+    raise SystemExit("Terminal config check failed: " + foot_check.stderr)
+for command in ("Hyprland", "quickshell", "foot", "nautilus", "fcitx5"):
+    result = subprocess.run(["ldd", shutil.which(command)], capture_output=True, text=True, check=True)
+    if "not found" in result.stdout:
+        raise SystemExit(f"Unresolved shared library for {command}: {result.stdout}")
+print("Image checks passed: desktop commands, user, default apps, fonts and theme.")

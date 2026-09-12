@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec foot --title="Omarchy on Mac" less /usr/share/msb-omarchy/welcome.txt

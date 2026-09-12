@@ -50,6 +50,19 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m3 build> bin/run -d --displa
 - [x] CI: `.github/workflows/guest-image.yml` builds the image on `ubuntu-24.04-arm` (no HVF there, so no boot test)
 - [x] Boot: the image pre-runs ldconfig/hwdb/catalog and stamps `/etc/.updated`, `graphical.target` 2.8 s → 2.3 s; the desktop session is up 5.6 s after `msb run` returns, SDDM itself costs ~40 ms so it stays
 
+## M4 — a persistent desktop experience (2026-09-13)
+
+- [x] Pin and isolate the graphics runtime and firmware; keep global VM state intact.
+- [x] Create/reopen/resume without replacing the VM disk; explicit reset and lifecycle locks.
+- [x] Light/standard profiles, readable opaque UI, compact VM bar and welcome guide.
+- [x] Browser, file manager, CJK/Pinyin and a UID-mapped Shared directory.
+- [x] Checked image layering on the immutable 4.0.2 base, with graphics package versions retained.
+- [x] 16 local tests, both Mac smoke profiles, actual input/screenshots and pointer measurements.
+- [x] Configure arm64 image CI and an exact-image publication gate.
+- [ ] Publish the tested image and promote its immutable digest for fresh checkouts.
+
+Evidence and remaining manual checks: [experience validation](experience.md).
+
 ## Later
 
 - Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done

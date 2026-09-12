@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+python3 -m unittest discover -s tests -v
+python3 - <<'PY'
+from pathlib import Path
+import json
+import subprocess
+paths = list(Path("bin").iterdir()) + list(Path("guest/overlay/usr/local/bin").iterdir())
+paths += list(Path("lib").glob("*.py"))
+for path in paths:
+    if not path.is_file():
+        continue
+    source = path.read_text()
+    if source.startswith("#!/usr/bin/env bash") or source.startswith("#!/bin/sh"):
+        subprocess.run(["bash", "-n", str(path)], check=True)
+    elif "python" in source.splitlines()[0] or path.suffix == ".py":
+        compile(source, str(path), "exec")
+for path in [Path("config/release.json"), Path("guest/overlay/etc/skel-omarchy/.config/omarchy/shell.json")]:
+    json.loads(path.read_text())
+print("Script syntax and JSON checks passed.")
+PY
+git diff --check

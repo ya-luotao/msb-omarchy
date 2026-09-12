@@ -1,0 +1,44 @@
+OMARCHY ON YOUR MAC
+
+The Mac Command key (⌘) is called Super inside Omarchy.
+
+  ⌘ + Enter             Open a terminal
+  ⌘ + K                 Browse keyboard shortcuts
+  ⌘ + Shift + Enter     Open the browser
+  ⌘ + Shift + F         Open the file manager
+  ⌘ + C / V             Copy / paste, including in the terminal
+
+Click the top-left logo to open the menu. Mac system shortcuts, such as
+Spotlight, can take priority over shortcuts inside the desktop.
+
+BROWSER AND INPUT
+
+Chromium may ask you to create a keyring password on its first launch.
+Choose a password to protect saved browser credentials.
+Use Ctrl + Space to switch between English and Chinese Pinyin input.
+
+FILES
+
+Open Shared from the folder in the top bar or the file manager sidebar.
+This is the Shared directory in the Mac project folder (or SHARED_DIR
+when configured). Files there remain available after resetting the VM.
+Documents elsewhere in this desktop live on the VM disk.
+
+OPENING AND CLOSING
+
+Closing the Mac window keeps the desktop running, including its apps.
+Run bin/run on the Mac to return. Run bin/stop to stop the VM, retaining
+its disk and settings; bin/run starts it again.
+
+The Mac handles networking, screen locking and physical hardware.
+Automatic guest locking and the screensaver are disabled for this VM.
+To change this, configure Omarchy's idle plugin and a guest password.
+
+DISPLAY
+
+The light profile renders 1600×900; standard renders 1920×1080.
+Both use larger text and a 1.25 desktop scale.
+Choose a profile when creating a VM: bin/run --profile standard.
+A different --name creates a separate desktop for comparing profiles.
+
+Press q to close this guide.

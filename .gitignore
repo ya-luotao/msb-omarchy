@@ -6,3 +6,7 @@ rootfs/
 build/
 test-runs/
 guest/build/
+.runtime/
+Shared/
+__pycache__/
+*.pyc

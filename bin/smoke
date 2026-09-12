@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Exercise an isolated desktop, shared files and stop/start persistence on a Mac."""
+import argparse
+import hashlib
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import socket
+import sys
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "lib"))
+from omarchy import Desktop, Error, execute, say, write_json
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--profile", choices=["light", "standard"], default="light")
+parser.add_argument("--keep", action="store_true", help="Leave the test VM running for visual inspection")
+args = parser.parse_args()
+name = "omarchy-smoke-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+output = ROOT / "test-runs" / name
+shared = output / "Shared"
+shared.mkdir(parents=True)
+with socket.socket() as port_probe:
+    port_probe.bind(("127.0.0.1", 0))
+    vnc_port = port_probe.getsockname()[1]
+env = dict(os.environ, SHARED_DIR=str(shared), VNC_PORT=str(vnc_port))
+desktop = Desktop()
+report = {"sandbox": name, "profile": args.profile, "checks": [], "passed": False}
+candidate_path = desktop.state_dir / "omarchy/image.json"
+candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else {}
+
+
+def checked(label, fn):
+    value = fn()
+    report["checks"].append(label)
+    write_json(output / "report.json", report)
+    say("PASS " + label)
+    return value
+
+
+def guest(*command):
+    return desktop.msb("exec", "--timeout", "15s", name, "--", "msb-session", *command,
+                       capture=True, timeout=20).stdout
+
+
+def require(condition, message):
+    if not condition:
+        raise Error(message)
+
+
+def screenshot(filename):
+    execute([ROOT / "bin/screenshot", name, output / filename], env=env, timeout=45)
+
+
+try:
+    before = time.monotonic()
+    execute([ROOT / "bin/run", "--name", name, "--profile", args.profile, "--no-display"], env=env, timeout=1000)
+    report["create_to_ready_seconds"] = round(time.monotonic() - before, 2)
+    versions = desktop.msb("exec", name, "--", "cat", "/usr/share/msb-omarchy/versions", capture=True).stdout
+    report["versions"] = versions
+    if candidate.get("tag") == desktop.image() and hashlib.sha256(versions.encode()).hexdigest() == candidate.get("versions_sha256"):
+        report["image_id"] = candidate["image_id"]
+    checked("desktop shell ready", lambda: require(guest("omarchy-shell", "shell", "ping").strip() == "ok", "shell not ready"))
+    image_check = desktop.msb("exec", "--timeout", "30s", name, "--", "msb-image-check", capture=True, timeout=35)
+    (output / "image-check.txt").write_text(image_check.stdout)
+    checked("image entry points and libraries", lambda: None)
+    config_errors = guest("hyprctl", "configerrors").strip()
+    checked("Hyprland config", lambda: require(config_errors in ("", "ok"), config_errors))
+    monitors = json.loads(guest("hyprctl", "-j", "monitors"))
+    report["monitors"] = monitors
+    expected = (1600, 900) if args.profile == "light" else (1920, 1080)
+    checked("display profile", lambda: require(
+        (monitors[0]["width"], monitors[0]["height"]) == expected and monitors[0]["scale"] == 1.25,
+        "unexpected monitor size or scale"))
+    compositor_env = guest("systemctl", "--user", "show", "wayland-wm@hyprland.desktop.service", "-p", "Environment")
+    checked("finished-frame workaround retained", lambda: require("LP_NUM_THREADS=0" in compositor_env, compositor_env))
+    checked("clipboard service", lambda: require(
+        guest("systemctl", "--user", "is-active", "msb-clipboard.service").strip() == "active", "clipboard service stopped"))
+    checked("input method service", lambda: require(
+        guest("systemctl", "--user", "is-active", "omarchy-fcitx5.service").strip() == "active", "input method stopped"))
+
+    token = uuid.uuid4().hex
+    (shared / "from-mac.txt").write_text(token)
+    checked("Mac to guest shared files", lambda: require(
+        guest("cat", "/home/omarchy/Shared/from-mac.txt").strip() == token, "shared file mismatch"))
+    guest("sh", "-c", 'printf "%s" "$1" > "$2"', "sh", token, "/home/omarchy/Shared/from-guest.txt")
+    checked("guest to Mac shared files", lambda: require(
+        (shared / "from-guest.txt").read_text() == token, "guest write did not reach Mac"))
+    guest("sh", "-c", 'printf "%s" "$1" > "$2"', "sh", token, "/home/omarchy/persistence-probe.txt")
+
+    for unit, command in (
+        ("msb-smoke-terminal", ["foot", "--app-id=msb-smoke-terminal", "--title=Omarchy on Mac"]),
+        ("msb-smoke-files", ["nautilus", "/home/omarchy/Shared"]),
+        ("msb-smoke-browser", ["chromium", "--no-first-run", "--new-window", "about:blank"]),
+    ):
+        guest("systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit,
+              "--property=StandardOutput=journal", "--property=StandardError=journal", "--", *command)
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        clients = json.loads(guest("hyprctl", "-j", "clients"))
+        classes = " ".join(client.get("class", "").lower() for client in clients)
+        if all(part in classes for part in ("msb-smoke-terminal", "nautilus", "chromium")):
+            break
+        time.sleep(1)
+    else:
+        raise Error("The browser, file manager or terminal did not map a window: " + classes)
+    report["clients"] = clients
+    checked("browser, file manager and terminal windows", lambda: None)
+    screenshot("apps.png")
+    boot_id = guest("cat", "/proc/sys/kernel/random/boot_id").strip()
+    execute([ROOT / "bin/stop", "--name", name], env=env, timeout=70)
+    before = time.monotonic()
+    execute([ROOT / "bin/run", "--name", name, "--no-display"], env=env, timeout=180)
+    report["resume_to_ready_seconds"] = round(time.monotonic() - before, 2)
+    checked("VM restarted", lambda: require(
+        guest("cat", "/proc/sys/kernel/random/boot_id").strip() != boot_id, "boot ID did not change"))
+    checked("guest document persists", lambda: require(
+        guest("cat", "/home/omarchy/persistence-probe.txt").strip() == token, "guest document was lost"))
+    checked("shared directory survives restart", lambda: require(
+        guest("cat", "/home/omarchy/Shared/from-mac.txt").strip() == token, "shared mount missing after restart"))
+    screenshot("desktop.png")
+    report["passed"] = True
+    if not args.keep:
+        execute([ROOT / "bin/stop", "--name", name], env=env, timeout=70)
+    write_json(output / "report.json", report)
+    say(f"Smoke passed. Evidence: {output}")
+    say(f"Test VM retained ({'running' if args.keep else 'stopped'}): {name}")
+except (Error, ValueError, OSError) as error:
+    report["error"] = str(error)
+    write_json(output / "report.json", report)
+    say(f"Smoke failed: {error}\nVM and evidence retained: {name}, {output}")
+    sys.exit(1)

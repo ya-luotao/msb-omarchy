@@ -1,28 +1,44 @@
 name: guest image
 
-# Builds the Omarchy guest image on GitHub's arm64 Linux runner. There is no
-# Hypervisor.framework on hosted macOS runners, so the image is only built, not
-# booted; the desktop checks stay manual (docs/plan.md).
 on:
   push:
     branches: [main]
-    paths: [guest/**, bin/build-rootfs, .github/workflows/guest-image.yml]
+    paths: [guest/**, bin/**, lib/**, tests/**, config/**, .github/workflows/guest-image.yml]
   pull_request:
-    paths: [guest/**, bin/build-rootfs, .github/workflows/guest-image.yml]
+    paths: [guest/**, bin/**, lib/**, tests/**, config/**, .github/workflows/guest-image.yml]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  launcher:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: bin/check
   build:
+    needs: launcher
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Build the image
+        with:
+          persist-credentials: false
+      - name: Build and check the installed image
         run: NO_LOAD=1 bin/build-rootfs
-        env:
-          MSB_OMARCHY_SRC: ${{ runner.temp }}/omarchy
-          MSB_OMARCHY_PKGS: ${{ runner.temp }}/omarchy-pkgs
-      - name: What went in
+      - name: Record image evidence
         run: |
-          docker run --rm --platform linux/arm64 msb-omarchy:dev sh -c \
-            'cat /usr/share/msb-omarchy/versions; pacman -Q omarchy omarchy-settings hyprland aquamarine quickshell mesa'
+          tag=$(python3 -c 'import json; print(json.load(open("config/release.json"))["build_tag"])')
+          mkdir -p build/evidence
+          docker image inspect "$tag" > build/evidence/image.json
+          docker run --rm "$tag" cat /usr/share/msb-omarchy/versions > build/evidence/versions.txt
+          docker run --rm "$tag" cat /usr/share/msb-omarchy/packages > build/evidence/packages.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guest-image-evidence
+          path: build/evidence/
+# Hosted runners cannot establish the HVF desktop result. Run bin/smoke on a Mac
+# for both profiles before bin/publish.

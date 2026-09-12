@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Publish the exact locally built image that passed both Mac smoke profiles."""
+import argparse
+import json
+from pathlib import Path
+import shutil
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "lib"))
+from omarchy import Desktop, Error, RELEASE, check_release, execute, say
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--repository", default="ghcr.io/ya-luotao/msb-omarchy")
+parser.add_argument("--check", action="store_true", help="Validate the exact image and both smoke reports without publishing")
+args = parser.parse_args()
+try:
+    marker = Desktop().state_dir / "omarchy/image.json"
+    candidate = json.loads(marker.read_text())
+    docker = shutil.which("docker") or "/usr/local/bin/docker"
+    image_id = execute([docker, "image", "inspect", "--format", "{{.Id}}", candidate["tag"]],
+                       capture=True).stdout.strip()
+    reports = [json.loads(path.read_text()) for path in (ROOT / "test-runs").glob("*/report.json")]
+    check_release(candidate, image_id, reports)
+    version = RELEASE["build_tag"].split(":")[-1]
+    destination = args.repository.rstrip("/") + ":" + version
+    if args.check:
+        say(f"Release checks passed: {image_id} has passing light and standard evidence.")
+        sys.exit(0)
+    say(f"Publishing tested image {image_id} as {destination}")
+    execute([docker, "tag", image_id, destination])
+    execute([docker, "push", destination])
+    result = execute([docker, "image", "inspect", "--format", "{{json .RepoDigests}}", destination], capture=True)
+    say("Published digests: " + result.stdout.strip())
+    say("Set release.json's image to the published digest to promote it for fresh checkouts.")
+except (Error, OSError, ValueError, KeyError) as error:
+    say(str(error))
+    sys.exit(1)
