@@ -1,3 +1,17 @@
-#!/bin/sh
-# xdg-terminal-exec is AUR-only; Omarchy's default terminal is foot.
-exec foot "$@"
+#!/bin/bash
+# xdg-terminal-exec is AUR-only; Omarchy's default terminal is foot. Translate
+# the xdg-terminal-exec options Omarchy passes into foot's: its launchers call
+# `xdg-terminal-exec --dir=<cwd> [command…]`, and foot rejects --dir.
+args=()
+while (($#)); do
+  case "$1" in
+    --print-id) echo foot.desktop; exit 0 ;;
+    --dir=*) args+=("--working-directory=${1#--dir=}") ;;
+    --dir) args+=("--working-directory=$2"); shift ;;
+    --app-id=* | --title=*) args+=("$1") ;;
+    -e | --) shift; break ;;
+    *) break ;;
+  esac
+  shift
+done
+exec foot "${args[@]}" "$@"

@@ -17,8 +17,11 @@ user = pwd.getpwnam("omarchy")
 if user.pw_uid != 1000:
     raise SystemExit("Shared directory requires guest UID 1000")
 user_dir = Path(user.pw_dir)
-for command in ("msb-welcome", "msb-help"):
+for command in ("msb-welcome", "msb-help", "xdg-terminal-exec"):
     subprocess.run(["bash", "-n", str(Path("/usr/local/bin") / command)], check=True)
+terminal = subprocess.run(["xdg-terminal-exec", "--print-id"], capture_output=True, text=True)
+if terminal.stdout.strip() != "foot.desktop":
+    raise SystemExit("xdg-terminal-exec does not resolve to foot")
 shell = json.loads((user_dir / ".config/omarchy/shell.json").read_text())
 if shell["version"] != 1:
     raise SystemExit("Unknown shell configuration version")

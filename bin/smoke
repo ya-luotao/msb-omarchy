@@ -91,8 +91,11 @@ try:
         (shared / "from-guest.txt").read_text() == token, "guest write did not reach Mac"))
     guest("sh", "-c", 'printf "%s" "$1" > "$2"', "sh", token, "/home/omarchy/persistence-probe.txt")
 
+    # The command Super+Enter runs, so the xdg-terminal-exec translation is
+    # covered. It detaches with setsid; started from a systemd-run unit, the
+    # terminal never mapped a window.
+    guest("sh", "-c", "omarchy-launch-terminal --app-id=msb-smoke-terminal </dev/null >/dev/null 2>&1 &")
     for unit, command in (
-        ("msb-smoke-terminal", ["foot", "--app-id=msb-smoke-terminal", "--title=Omarchy on Mac"]),
         ("msb-smoke-files", ["nautilus", "/home/omarchy/Shared"]),
         ("msb-smoke-browser", ["chromium", "--no-first-run", "--new-window", "about:blank"]),
     ):
