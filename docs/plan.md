@@ -71,7 +71,7 @@ Evidence and remaining manual checks: [experience validation](experience.md).
 - [x] Super+Enter opens a terminal again: Omarchy's launcher calls `xdg-terminal-exec --dir=…`, which the foot wrapper passed on and foot rejected; smoke now launches the terminal through that launcher
 - [ ] Mac smoke for both profiles on an image built from a clean commit, then publish it
 - [x] Runtime on microsandbox v0.7.x, spike: resident pause/resume keeps the desktop with display, input and sound attached; checkpoints need device quiesce and a PID 1 freezer (assessment, "Runtime on microsandbox v0.7.2")
-- [ ] Runtime on microsandbox v0.7.x for real: `msb run --display`, a release built with SDK < 27, then `bin/run` pausing instead of stopping
+- [x] Runtime on microsandbox v0.7.2: fork release [v0.7.2-gpu-m4.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) (branch `gpu-m4`, `msb run --display` ported, SDK 14.5 recorded at link time); `bin/pause`, paused VMs resumed by `bin/run`; database backup and refusal while old VMs are active when the runtime changes; both smoke profiles and `bin/frame-check` pass on it, and this Mac's state was migrated
 
 ## Later
 

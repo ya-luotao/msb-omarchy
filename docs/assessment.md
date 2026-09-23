@@ -211,6 +211,15 @@ Branch `gpu-m4-spike` of the fork (local only, `SPIKE-gpu-m4.md` there) ports `g
 - **Checkpoints do not.** `snapshot create --full` and `branch` refuse with `resource virtio_gpu (virtio type 16) cannot quiesce` (virtio-snd likewise), and independently a systemd PID 1 (`--init auto`) is refused with `workload freezer is unavailable: PID 1 handoff workloads are not wholly owned by agentd's cgroup`.
 - **Local builds and HVF**: any v0.7.x `msb` linked against the macOS 27 SDK fails a full checkpoint even without extra devices (`Error reading HVF vCPU interrupt state`); the release binary (SDK 14.5) succeeds, and rewriting the local binary's SDK version to 14.5 made capture and restore work. One trial each way.
 
+## Runtime on microsandbox v0.7.2: release (2026-09-24)
+
+`gpu-m4` on the fork is v0.7.2 plus three commits: the vendored msb_krun 0.1.39 crates with the display patches, the runtime/CLI port (including `msb run --display`), and a `.cargo/config.toml` link argument that records SDK 14.5 in `LC_BUILD_VERSION`, with which a full checkpoint of a device-less sandbox succeeds. Released as [v0.7.2-gpu-m4.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) and paired with the v0.7.2 libkrunfw.
+
+- **Upgrade.** Tested first on an APFS clone of `.runtime/home`, then on this Mac's state: the database goes from 25 to 27 migrations, all 11 VMs remain, and existing VMs start with their disks. 0.6.16 refuses the migrated database (`database schema is newer than this msb binary`), hence the launcher's backup.
+- **Sockets.** v0.7.2 derives them from `MSB_HOME/run/sandboxes/<24 hex>/` (`client/ipc.rs`) and refuses paths of 104 bytes or more; the longest is the state directory plus 52 bytes, and there is no separate socket directory setting. The launcher checks the length up front.
+- **CLI.** `list` reports `Created`, `Starting`, `Running`, `Draining`, `Paused`, `Stopped` or `Crashed`; `stop` and `exec` refuse a paused sandbox; everything else the launcher uses behaves as before. `--version` prints `msb 0.7.2`, the same as an upstream build.
+- **Checks on this Mac.** Both smoke profiles passed (create to ready 6.9 s light, 5.7 s standard); `bin/frame-check` 20/20; `bin/pause` then `bin/run` resumed in 2.3 s with the same boot ID and the terminal's process; `bin/stop` from paused works. Frame rates were measured only under a host load of 20–47 and varied from 34 to 58 pointer frames/s and 9 to 35 redraw frames/s, the best close to the 0.6.16 numbers above; a quiet comparison is outstanding.
+
 ## Hyprland constraints
 
 - No DRM-free mode. Hyprland 0.56.1 registers aquamarine backends as HEADLESS mandatory, DRM if available, Wayland fallback — but `Backend::start()` builds its allocator from a backend `drmFD()`, and the headless backend returns -1. With no `/dev/dri` the log says "Cannot open backend: no allocator available". Issue hyprwm/Hyprland#7917 is closed as not planned; `HYPRLAND_HEADLESS_ONLY` is set by hyprtester but has no reader in the 0.56.1 tree.

@@ -201,8 +201,9 @@ class Desktop:
             raise Error("The desktop runtime requires an Apple Silicon Mac.")
         with lock(ROOT / ".runtime/setup.lock"):
             downloads = ROOT / ".runtime/downloads"
-            archive = downloads / "msb-gpu-m3.tar.gz"
-            firmware = downloads / "libkrunfw.5.dylib"
+            version = RELEASE["runtime"]["version"]
+            archive = downloads / f"msb-{version}.tar.gz"
+            firmware = downloads / f"libkrunfw-{version}.dylib"
             say("Downloading and checking the pinned graphics runtime…")
             download(RELEASE["runtime"], archive)
             download(RELEASE["firmware"], firmware)

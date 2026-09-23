@@ -38,6 +38,8 @@ The project combines a pinned graphics runtime with an Arch Linux ARM guest imag
 
 Each VM defaults to **4 vCPUs, 4G RAM and a 16G writable disk**. Docker is used to build and load the image; the desktop itself runs through microsandbox and macOS virtualization.
 
+Keep the checkout at a short path: the runtime's socket paths must fit in 104 bytes, which limits the state directory (`<checkout>/.runtime/home` by default) to 51 bytes. `bin/run` reports a longer one; set `MSB_HOME` to a shorter directory, such as `~/.msb-omarchy`, before creating desktops.
+
 ### Install and launch
 
 ```sh
@@ -63,8 +65,9 @@ A successfully checked and loaded image becomes this checkout's default for **ne
 | Create, resume or reopen the default desktop | `bin/run` |
 | Start it without opening a window | `bin/run --no-display` |
 | Close the window | The VM and its applications keep running |
+| Pause the VM | `bin/pause` — applications stay open in memory and stop using CPU; `bin/run` resumes it in about 2 seconds |
 | Stop the VM | `bin/stop` — files and settings remain; running applications close |
-| Return after a Mac restart | `bin/run` — the VM's disk recovers like after a power loss; applications start fresh |
+| Return after a Mac restart | `bin/run` — the VM's disk recovers like after a power loss; applications start fresh, paused ones included |
 | List this project's VMs | `bin/msb list` |
 | Capture the current desktop | `bin/screenshot omarchy desktop.png` |
 | Check runtime and host support | `bin/doctor` |
@@ -125,7 +128,7 @@ In the [recorded Mac test](docs/experience.md), create-to-ready took 5.07 second
 | `light` | 58 → 60 | 21–22 → 52–56 |
 | `standard` | 43 → 60 | 15 → 41–42 |
 
-These count frames the guest presents, not end-to-end latency, and are no guarantee for other machines. Method and raw numbers are in the [assessment](docs/assessment.md#half-drawn-frames-revisited-2026-09-24-glfinish-instead-of-one-thread).
+These count frames the guest presents, not end-to-end latency, and are no guarantee for other machines; they were taken with the 0.6.16 runtime. Method and raw numbers are in the [assessment](docs/assessment.md#half-drawn-frames-revisited-2026-09-24-glfinish-instead-of-one-thread).
 
 ## Files, clipboard and audio
 
@@ -165,11 +168,11 @@ flowchart LR
     Shared["Mac Shared directory"] <--> Guest
 ```
 
-The host runtime boots the guest using macOS virtualization. The guest renders through software OpenGL (llvmpipe) and virtio-gpu KMS; a preloaded library makes Hyprland wait for llvmpipe before each commit, because Hyprland only does so for GPUs it recognizes as software. The display server exposes scanout frames to the native viewer and sends input back to the guest. Clipboard and audio use the existing gpu-m3 integrations.
+The host runtime boots the guest using macOS virtualization. The guest renders through software OpenGL (llvmpipe) and virtio-gpu KMS; a preloaded library makes Hyprland wait for llvmpipe before each commit, because Hyprland only does so for GPUs it recognizes as software. The display server exposes scanout frames to the native viewer and sends input back to the guest. Clipboard and audio use the runtime's own integrations (vsock and virtio-snd through CoreAudio).
 
 The image recipe adds this repository's applications and configuration to an immutable Omarchy 4.0.2 base. Before and after installing packages, it verifies that Hyprland, Aquamarine, Mesa, Quickshell and Qt base remain at their original versions.
 
-`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the existing [gpu-m3 graphics build](https://github.com/ya-luotao/microsandbox/tree/gpu-m3); a stock global microsandbox binary does not include its display command. Its changes were proposed to microsandbox and its VMM (libkrun) in August 2026 and have not been reviewed, so this project maintains the fork; the [upstream status](docs/assessment.md#upstream-status-2026-09-24) records where each piece stands.
+`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the [gpu-m4 graphics build](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) of microsandbox 0.7.2; a stock global microsandbox binary does not include its display command. Its changes were proposed to microsandbox and its VMM (libkrun) in August 2026 and have not been reviewed, so this project maintains the fork; the [upstream status](docs/assessment.md#upstream-status-2026-09-24) records where each piece stands.
 
 ## Configuration
 
@@ -188,6 +191,10 @@ These settings apply when creating a VM. `--name` and `--profile` take precedenc
 | `MSB_GPU_DISPLAY` | Profile resolution | Advanced output-size override, e.g. `1600x900` |
 
 Advanced runtime overrides are `MSB` for the binary, `MSB_LIBKRUNFW_PATH` for firmware and `MSB_HOME` for state. The default state directory is `.runtime/home/`. The project explicitly selects its own configuration file, so global microsandbox configuration is not inherited.
+
+### Changing runtimes
+
+A newer runtime migrates the VM database the first time it opens it, and older runtimes refuse the migrated database. Before a different runtime first opens it, the launcher saves a copy under `.runtime/home/db-backups/`, and it refuses while VMs started by the previous runtime are still running or paused; stop them first. To go back, stop all VMs, delete `.runtime/home/db/msb.db-wal` and `msb.db-shm`, copy the saved database over `.runtime/home/db/msb.db` and check out the previous `config/release.json`. VM disks are not changed by the migration. Updating from the 0.6.16 runtime to 0.7.2 after pulling this version is such a migration.
 
 ## Validation
 
@@ -254,7 +261,7 @@ The configured fallback currently remains the earlier 4.0.2 baseline. Follow the
 ## Current boundaries
 
 - Apple Silicon macOS is the supported desktop host. Hardware-accelerated rendering, cursor-only commits and multiple outputs remain future work.
-- Stopping a VM ends its applications. A runtime on microsandbox v0.7 that pauses the VM instead, keeping applications open, is in progress.
+- A paused VM keeps its memory allocated and does not survive a Mac restart; its applications are gone after one. Saving a running desktop to disk is not possible yet: the virtio-gpu and sound devices cannot quiesce for a checkpoint, and the runtime cannot freeze a systemd-managed guest. While paused, the guest clock keeps running, so timers treat a long pause as elapsed time.
 - Guest autologin is enabled. Automatic guest locking and the screensaver are disabled; host screen locking still applies. Configure a guest password and Omarchy's idle plugin before enabling guest locking.
 - The guest time zone remains UTC by default.
 - The latest smoke checks confirm clipboard and input services. Audible output, fresh end-to-end Mac clipboard transfers and physical keyboard/trackpad feel were not rechecked in that validation pass.
