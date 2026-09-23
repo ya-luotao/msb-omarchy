@@ -31,8 +31,10 @@ def say(message):
 
 def execute(args, *, env=None, capture=False, timeout=None, check=True):
     try:
+        # No child needs input; an inherited stdin that never closes can hold
+        # `msb exec` past its --timeout.
         result = subprocess.run(
-            [str(arg) for arg in args], env=env, text=True,
+            [str(arg) for arg in args], env=env, text=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE if capture else None,
             stderr=subprocess.PIPE if capture else None, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
