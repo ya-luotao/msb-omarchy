@@ -65,7 +65,7 @@ Evidence and remaining manual checks: [experience validation](experience.md).
 
 ## Later
 
-- Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done
+- Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done, but hypr* upstream does not take contributions from this project, so the compositor side would have to be carried locally
 - [x] Audio via `snd` — the vendored device only had a PipeWire host backend (Linux-only in practice), so the `gpu-m3` branch adds a cpal/CoreAudio backend and `MSB_SND=1`; `pw-play` in the guest reaches the Mac's default output (fork PR [#4](https://github.com/ya-luotao/microsandbox/pull/4))
 - [x] Clipboard between host and guest — text both ways while `msb display` is open: a `msb-clipboard` user service in the guest talks newline-delimited JSON over vsock port 5910 to an in-process backend owned by the display server, which relays it to the viewer as `ServerMsg::Clipboard` / `ViewerMsg::Clipboard`; the viewer uses `arboard` for the macOS pasteboard. Images are not carried yet, but the wire format has a `mime` field for them.
 - Multiple outputs

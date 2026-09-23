@@ -51,7 +51,9 @@ to every commit regardless.
 
 Making this pay off needs cursor-only commits in Hyprland/aquamarine — KWin
 already does plane-selective commits (`drm_pipeline.cpp:64-83`) — which is an
-upstream change, not something to carry here.
+upstream change, not something to carry here. The hotspot patch itself was
+submitted as hyprwm/aquamarine#372 and closed unreviewed by the project's bot
+(hypr* repositories no longer accept contributions from unvouched contributors).
 
 ## Enabling it anyway
 

@@ -212,8 +212,12 @@ class Desktop:
                 launch_env = dict(self.env, MSB_GPU="1", MSB_SND="1",
                                   MSB_GPU_DISPLAY=settings["display"])
                 status = existing["status"].lower()
-                if status == "stopped":
-                    say(f"Starting {args.name} with its saved desktop…")
+                if status in ("stopped", "crashed"):
+                    # "crashed" is what msb records when the VM process died
+                    # without a stop, e.g. across a Mac restart; the disk is
+                    # kept and msb starts it the same way as a stopped VM.
+                    say(f"Starting {args.name} with its saved desktop"
+                        f"{' after an unclean shutdown' if status == 'crashed' else ''}…")
                     self.msb("start", args.name, env=launch_env, timeout=120)
                 elif status == "running":
                     say(f"Opening the running desktop {args.name}…")

@@ -66,6 +66,21 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(self.calls("start")[0]["display"], "1920x1080")
         self.assertEqual(len(self.calls("run")), 1)
 
+    def test_crashed_vm_resumes_without_replacing_disk(self):
+        self.start("--profile", "standard")
+        document = self.state / "guest-document"
+        document.write_text("work from before the Mac restarted")
+        state_path = self.state / "fake-state.json"
+        state = json.loads(state_path.read_text())
+        state["omarchy"]["status"] = "Crashed"
+        state_path.write_text(json.dumps(state))
+        result = self.start()
+        self.assertIn("unclean shutdown", result.stderr)
+        self.assertEqual(self.calls("start")[0]["display"], "1920x1080")
+        self.assertEqual(document.read_text(), "work from before the Mac restarted")
+        self.assertEqual(len(self.calls("run")), 1)
+        self.assertFalse(self.calls("remove"))
+
     def test_database_failure_does_not_create_or_remove(self):
         self.start(success=False, FAKE_LIST_ERROR="1")
         self.assertFalse(self.calls("run"))
