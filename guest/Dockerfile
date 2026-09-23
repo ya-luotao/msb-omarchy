@@ -16,7 +16,8 @@ RUN pacman -Q hyprland aquamarine mesa quickshell qt6-base > /tmp/graphics-packa
 # silently changing the rendering baseline. Review a new base image separately.
 
 COPY overlay/ /
-RUN cp -a /etc/skel-omarchy/. /home/omarchy/ && rm -rf /etc/skel-omarchy \
+RUN gcc -shared -fPIC -O2 -Wall -Werror -o /usr/local/lib/msb-glfinish.so /usr/local/src/msb-glfinish.c -ldl \
+ && cp -a /etc/skel-omarchy/. /home/omarchy/ && rm -rf /etc/skel-omarchy \
  && chmod +x /usr/local/bin/xdg-terminal-exec /usr/local/bin/msb-* \
  && test "$(id -u omarchy)" = 1000 \
  && mkdir -p /home/omarchy/Shared /home/omarchy/Projects /home/omarchy/Downloads /home/omarchy/Pictures /home/omarchy/Videos \

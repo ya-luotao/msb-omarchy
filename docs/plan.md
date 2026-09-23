@@ -63,6 +63,16 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m3 build> bin/run -d --displa
 
 Evidence and remaining manual checks: [experience validation](experience.md).
 
+## M5 — rendering and runtime refresh (2026-09-24)
+
+- [x] Resume VMs that msb marks crashed after a Mac restart
+- [x] Record the upstream status (assessment); hypr* no longer accepts this project's contributions, so compositor fixes are carried here
+- [x] Replace `LP_NUM_THREADS=0` with a compositor-only `glFlush`→`glFinish` shim: no half-drawn frames with four llvmpipe threads, about twice the full-window redraw rate (assessment, "Half-drawn frames, revisited"); `bin/frame-check` and `bin/measure-display --redraw`
+- [x] Super+Enter opens a terminal again: Omarchy's launcher calls `xdg-terminal-exec --dir=…`, which the foot wrapper passed on and foot rejected; smoke now launches the terminal through that launcher
+- [ ] Mac smoke for both profiles on an image built from a clean commit, then publish it
+- [x] Runtime on microsandbox v0.7.x, spike: resident pause/resume keeps the desktop with display, input and sound attached; checkpoints need device quiesce and a PID 1 freezer (assessment, "Runtime on microsandbox v0.7.2")
+- [ ] Runtime on microsandbox v0.7.x for real: `msb run --display`, a release built with SDK < 27, then `bin/run` pausing instead of stopping
+
 ## Later
 
 - Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done, but hypr* upstream does not take contributions from this project, so the compositor side would have to be carried locally

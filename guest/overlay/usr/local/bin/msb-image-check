@@ -33,6 +33,13 @@ for kind in ("x-scheme-handler/https", "inode/directory"):
         raise SystemExit(f"Default application is missing: {desktop}")
 subprocess.run(["pacman", "-Q", "hyprland", "aquamarine", "mesa", "quickshell",
                 "chromium", "nautilus", "noto-fonts-cjk", "fcitx5-chinese-addons"], check=True)
+symbols = subprocess.run(["nm", "-D", "--defined-only", "/usr/local/lib/msb-glfinish.so"],
+                         capture_output=True, text=True, check=True).stdout
+if " T glFlush" not in symbols:
+    raise SystemExit("Compositor glFlush shim is missing")
+dropin = user_dir / ".config/systemd/user/wayland-wm@hyprland.desktop.service.d/llvmpipe.conf"
+if "LD_PRELOAD=/usr/local/lib/msb-glfinish.so" not in dropin.read_text():
+    raise SystemExit("Compositor unit does not load the glFlush shim")
 theme = user_dir / ".local/state/omarchy/current/theme"
 if not (theme / "shell.toml").is_file() or not (theme / "foot.ini").is_file():
     raise SystemExit("Default theme was not generated")

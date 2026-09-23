@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Measure scanout announcements under scripted pointer motion (not display latency).
+With --redraw, measure a terminal that redraws its whole window continuously
+instead; no input is sent then.
 Attaches the one display.sock viewer slot and closes an existing native viewer.
 """
 import argparse
@@ -15,13 +17,18 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from omarchy import Desktop
 
+UNIT = "msb-measure-redraw"
+WORKLOAD = "while :; do head -c 6000 /dev/urandom | base64 -w 190; done"
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("sandbox")
 parser.add_argument("--seconds", type=float, default=8)
+parser.add_argument("--redraw", action="store_true", help="Measure a continuously redrawing terminal")
 args = parser.parse_args()
 if not 2 <= args.seconds <= 30:
     parser.error("--seconds must be between 2 and 30")
-path = Desktop().state_dir / "run/sandboxes" / hashlib.sha256(args.sandbox.encode()).hexdigest()[:24] / "display.sock"
+desktop = Desktop()
+path = desktop.state_dir / "run/sandboxes" / hashlib.sha256(args.sandbox.encode()).hexdigest()[:24] / "display.sock"
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.settimeout(10)
 sock.connect(str(path))
@@ -49,30 +56,44 @@ while geometry is None and time.monotonic() < deadline:
     receive(0.1)
 if geometry is None:
     raise SystemExit("No scanout was configured")
-start = time.monotonic()
-next_input = start
-frames = []
-inputs = 0
-last_sequence = None
-while time.monotonic() - start < args.seconds + 2:
-    now = time.monotonic()
-    if now >= next_input:
-        elapsed = now - start
-        msg = {"t": "abs", "x": round(16384 + 8000 * math.sin(elapsed * 3)),
-               "y": round(16384 + 3500 * math.cos(elapsed * 2))}
-        sock.sendall(json.dumps(msg).encode() + b"\n")
-        if elapsed >= 2:
-            inputs += 1
-        next_input += 1 / 60
-    for msg in receive(max(0, min(0.02, next_input - time.monotonic()))):
-        if msg["t"] == "frame" and msg.get("scanout") == 0:
-            sequence = msg.get("seq")
-            if sequence != last_sequence and time.monotonic() - start >= 2:
-                frames.append(time.monotonic())
-            last_sequence = sequence
-sock.close()
+if args.redraw:
+    # Park the pointer out of the way, then let the terminal drive the frames.
+    sock.sendall(json.dumps({"t": "abs", "x": 32700, "y": 32700}).encode() + b"\n")
+    desktop.msb("exec", "--timeout", "10s", args.sandbox, "--", "msb-session", "systemd-run", "--user",
+                "--quiet", "--collect", "--unit=" + UNIT, "--", "foot", "--app-id=" + UNIT,
+                "sh", "-c", WORKLOAD, capture=True, timeout=15)
+    time.sleep(2)  # a cold terminal start can outlast the warm-up alone
+try:
+    start = time.monotonic()
+    next_input = start
+    frames = []
+    inputs = 0
+    last_sequence = None
+    while time.monotonic() - start < args.seconds + 2:
+        now = time.monotonic()
+        if now >= next_input and not args.redraw:
+            elapsed = now - start
+            msg = {"t": "abs", "x": round(16384 + 8000 * math.sin(elapsed * 3)),
+                   "y": round(16384 + 3500 * math.cos(elapsed * 2))}
+            sock.sendall(json.dumps(msg).encode() + b"\n")
+            if elapsed >= 2:
+                inputs += 1
+            next_input += 1 / 60
+        wait = 0.02 if args.redraw else max(0, min(0.02, next_input - time.monotonic()))
+        for msg in receive(wait):
+            if msg["t"] == "frame" and msg.get("scanout") == 0:
+                sequence = msg.get("seq")
+                if sequence != last_sequence and time.monotonic() - start >= 2:
+                    frames.append(time.monotonic())
+                last_sequence = sequence
+finally:
+    sock.close()
+    if args.redraw:
+        desktop.msb("exec", "--timeout", "10s", args.sandbox, "--", "msb-session", "systemctl", "--user",
+                    "stop", UNIT + ".service", capture=True, timeout=15, check=False)
 intervals = [(right - left) * 1000 for left, right in zip(frames, frames[1:])]
-result = {"sandbox": args.sandbox, "geometry": geometry, "warmup_seconds": 2,
+result = {"sandbox": args.sandbox, "workload": "redraw" if args.redraw else "pointer",
+          "geometry": geometry, "warmup_seconds": 2,
           "sample_seconds": args.seconds, "pointer_events": inputs, "frames": len(frames),
           "frames_per_second": round(len(frames) / args.seconds, 2),
           "median_frame_interval_ms": round(statistics.median(intervals), 2) if intervals else None}

@@ -115,7 +115,7 @@ Chromium may ask you to create a keyring password on its first launch to protect
 
 Profiles are selected when creating a VM. The light profile renders **30.6% fewer pixels**; UI scaling by itself does not reduce the output pixel count.
 
-Both profiles use a larger shell font, a 12pt terminal font, opaque windows and a compact top bar with workspaces, time, shared files, tray and audio. Window animations, blur and shadows are disabled. The existing compositor-only `LP_NUM_THREADS=0` workaround is retained to avoid partially drawn software-rendered frames.
+Both profiles use a larger shell font, a 12pt terminal font, opaque windows and a compact top bar with workspaces, time, shared files, tray and audio. Window animations, blur and shadows are disabled. The compositor loads a small `glFlush`→`glFinish` shim so software rendering keeps every vCPU without presenting partially drawn frames; `bin/frame-check` tests for such frames.
 
 In the [recorded Mac test](docs/experience.md), create-to-ready took 5.07 seconds for light and 5.67 seconds for standard. Scripted pointer movement produced approximately 60 and 45 scanout announcements per second, respectively. These are single-run observations on an M3 Pro, not end-to-end latency measurements or a guarantee for other machines.
 
@@ -217,7 +217,9 @@ bin/measure-display TEST_VM
 bin/display-shot TEST_VM menu.png --key super+space
 ```
 
-Both diagnostics attach to the single `display.sock` viewer slot and **close any existing native viewer for that VM**. Reopen it with `bin/msb display TEST_VM`. `bin/display-shot` requires Pillow. Normal `bin/screenshot` uses guest `grim` and does not displace the viewer.
+`bin/measure-display TEST_VM --redraw` measures a continuously redrawing terminal instead of pointer motion, and `bin/frame-check TEST_VM` opens and closes the menu repeatedly and fails if a presented frame was half drawn.
+
+These diagnostics attach to the single `display.sock` viewer slot and **close any existing native viewer for that VM**. Reopen it with `bin/msb display TEST_VM`. `bin/display-shot` requires Pillow. Normal `bin/screenshot` uses guest `grim` and does not displace the viewer.
 
 ## Building and publishing
 

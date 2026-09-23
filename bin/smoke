@@ -76,7 +76,12 @@ try:
         (monitors[0]["width"], monitors[0]["height"]) == expected and monitors[0]["scale"] == 1.25,
         "unexpected monitor size or scale"))
     compositor_env = guest("systemctl", "--user", "show", "wayland-wm@hyprland.desktop.service", "-p", "Environment")
-    checked("finished-frame workaround retained", lambda: require("LP_NUM_THREADS=0" in compositor_env, compositor_env))
+    checked("finished-frame workaround retained", lambda: require(
+        "LD_PRELOAD=/usr/local/lib/msb-glfinish.so" in compositor_env and "LP_NUM_THREADS" not in compositor_env,
+        compositor_env))
+    checked("compositor loaded the glFlush shim", lambda: require(
+        guest("sh", "-c", "grep -c msb-glfinish /proc/$(pgrep -x Hyprland)/maps").strip() not in ("", "0"),
+        "msb-glfinish.so is not mapped into Hyprland"))
     checked("clipboard service", lambda: require(
         guest("systemctl", "--user", "is-active", "msb-clipboard.service").strip() == "active", "clipboard service stopped"))
     checked("input method service", lambda: require(
