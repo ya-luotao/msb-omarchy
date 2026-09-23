@@ -181,7 +181,18 @@ Setup: three VMs from the same M4 image (e5423bab), standard profile 1920×1080,
 | Terminal redrawing its whole window (`bin/measure-display --redraw`) | 13.3 / 10.8 / 9.9 frames/s, median interval 71–93 ms | 30.6 / 22.3 / 21.0 frames/s, median interval 31–43 ms |
 | Pointer sweep at 60 Hz (`bin/measure-display`) | 6.3 / 20.8 / 22.9 frames/s | 53.4 / 52.6 / 47.1 frames/s |
 
-Full-window redraws are about twice as fast, and pointer motion stays close to its input rate under host load, where the single-threaded compositor fell far behind. Repeat on a quiet Mac before quoting absolute numbers.
+Full-window redraws are about twice as fast, and pointer motion stays close to its input rate under host load, where the single-threaded compositor fell far behind.
+
+Repeated on a quieter Mac (load average 8–16) with the smoke VMs of both images, alternating, two runs each (frames/s, median interval):
+
+| Profile | Workload | M4 image (`LP_NUM_THREADS=0`) | Shim image |
+| --- | --- | --- | --- |
+| light 1600×900 | pointer sweep | 57.6 / 58.5 (16.6 ms) | 60.0 / 59.8 (16.6 ms) |
+| light 1600×900 | redraw | 22.0 / 21.1 (45–46 ms) | 56.4 / 51.8 (17–18 ms) |
+| standard 1920×1080 | pointer sweep | 43.5 / 43.3 (22.9 ms) | 59.9 / 60.0 (16.6 ms) |
+| standard 1920×1080 | redraw | 15.4 / 15.1 (64–66 ms) | 42.4 / 40.9 (23–24 ms) |
+
+The pointer sweep sends 60 events/s, so 60 frames/s is its ceiling.
 
 ## Upstream status (2026-09-24)
 

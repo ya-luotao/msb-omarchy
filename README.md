@@ -16,13 +16,13 @@ The project combines a pinned graphics runtime with an Arch Linux ARM guest imag
 
 - **A persistent desktop.** Create a VM once, close and reopen its window, or stop and resume it with files and settings preserved.
 - **Native Mac integration.** The graphics runtime provides a macOS display window, keyboard and pointer input, text clipboard synchronization and audio output.
-- **A desktop tuned for software rendering.** Two display profiles, larger text, opaque windows and disabled window animations, blur and shadows.
+- **A desktop tuned for software rendering.** Two display profiles, larger text, opaque windows and disabled window animations, blur and shadows. The compositor rasterizes on every vCPU and presents only finished frames.
 - **Useful applications from the first boot.** Chromium, Nautilus, Foot, CJK fonts and Fcitx5 Pinyin, with working default browser and file-manager associations.
 - **Explicit file sharing.** A writable Shared directory, accessible from the top bar and the file-manager sidebar.
 - **An isolated runtime.** Checksummed runtime and firmware downloads, with project-local VM state independent of a global microsandbox installation.
 - **Recorded validation.** Launcher and release tests, guest image checks, Mac smoke tests, screenshots and measurements tied to the tested image.
 
-**Status:** experimental desktop integration for Apple Silicon. The current guest has passed both display-profile smoke tests on a Mac. The latest experience layer must be built locally; the configured prebuilt fallback is the earlier Omarchy 4.0.2 baseline. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
+**Status:** experimental desktop integration for Apple Silicon. The current guest recipe passed both display-profile smoke tests on a Mac on 2026-09-24. The latest experience layer must be built locally; the configured prebuilt fallback is the earlier Omarchy 4.0.2 baseline. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
 
 ## Quick start
 
@@ -64,6 +64,7 @@ A successfully checked and loaded image becomes this checkout's default for **ne
 | Start it without opening a window | `bin/run --no-display` |
 | Close the window | The VM and its applications keep running |
 | Stop the VM | `bin/stop` — files and settings remain; running applications close |
+| Return after a Mac restart | `bin/run` — the VM's disk recovers like after a power loss; applications start fresh |
 | List this project's VMs | `bin/msb list` |
 | Capture the current desktop | `bin/screenshot omarchy desktop.png` |
 | Check runtime and host support | `bin/doctor` |
@@ -117,7 +118,14 @@ Profiles are selected when creating a VM. The light profile renders **30.6% fewe
 
 Both profiles use a larger shell font, a 12pt terminal font, opaque windows and a compact top bar with workspaces, time, shared files, tray and audio. Window animations, blur and shadows are disabled. The compositor loads a small `glFlush`→`glFinish` shim so software rendering keeps every vCPU without presenting partially drawn frames; `bin/frame-check` tests for such frames.
 
-In the [recorded Mac test](docs/experience.md), create-to-ready took 5.07 seconds for light and 5.67 seconds for standard. Scripted pointer movement produced approximately 60 and 45 scanout announcements per second, respectively. These are single-run observations on an M3 Pro, not end-to-end latency measurements or a guarantee for other machines.
+In the [recorded Mac test](docs/experience.md), create-to-ready took 5.07 seconds for light and 5.67 seconds for standard. Scanout frames per second measured with `bin/measure-display` on an M3 Pro, two runs each, before and after the compositor change:
+
+| Profile | Pointer sweep at 60 Hz | Terminal redrawing its whole window |
+| --- | --- | --- |
+| `light` | 58 → 60 | 21–22 → 52–56 |
+| `standard` | 43 → 60 | 15 → 41–42 |
+
+These count frames the guest presents, not end-to-end latency, and are no guarantee for other machines. Method and raw numbers are in the [assessment](docs/assessment.md#half-drawn-frames-revisited-2026-09-24-glfinish-instead-of-one-thread).
 
 ## Files, clipboard and audio
 
@@ -157,11 +165,11 @@ flowchart LR
     Shared["Mac Shared directory"] <--> Guest
 ```
 
-The host runtime boots the guest using macOS virtualization. The guest renders through software OpenGL and virtio-gpu KMS; the display server exposes scanout frames to the native viewer and sends input back to the guest. Clipboard and audio use the existing gpu-m3 integrations.
+The host runtime boots the guest using macOS virtualization. The guest renders through software OpenGL (llvmpipe) and virtio-gpu KMS; a preloaded library makes Hyprland wait for llvmpipe before each commit, because Hyprland only does so for GPUs it recognizes as software. The display server exposes scanout frames to the native viewer and sends input back to the guest. Clipboard and audio use the existing gpu-m3 integrations.
 
 The image recipe adds this repository's applications and configuration to an immutable Omarchy 4.0.2 base. Before and after installing packages, it verifies that Hyprland, Aquamarine, Mesa, Quickshell and Qt base remain at their original versions.
 
-`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the existing [gpu-m3 graphics build](https://github.com/ya-luotao/microsandbox/tree/gpu-m3); a stock global microsandbox binary may not include its display command.
+`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the existing [gpu-m3 graphics build](https://github.com/ya-luotao/microsandbox/tree/gpu-m3); a stock global microsandbox binary does not include its display command. Its changes were proposed to microsandbox and its VMM (libkrun) in August 2026 and have not been reviewed, so this project maintains the fork; the [upstream status](docs/assessment.md#upstream-status-2026-09-24) records where each piece stands.
 
 ## Configuration
 
@@ -193,12 +201,13 @@ bin/smoke --profile standard
 | --- | --- |
 | `bin/check` | Launcher persistence and failure handling, release gates, script syntax, JSON and whitespace checks |
 | Image build checks | Required commands, application associations, fonts, generated theme, terminal configuration and shared libraries |
-| `bin/smoke` | A real Mac VM boots, maps application windows, shares files in both directions and retains files after stop/start |
+| `bin/smoke` | A real Mac VM boots, maps application windows (the terminal through Super+Enter's launcher), shares files in both directions and retains files after stop/start |
+| `bin/frame-check TEST_VM` | Opening and closing the menu never presents a half-drawn frame |
 | `bin/publish --check` | The current local image matches passing smoke reports for both profiles |
 
 Smoke tests create independent VMs with their own shared directories and retain reports and screenshots under `test-runs/`. By default, successful test VMs are stopped and their disks are retained; `--keep` leaves them running for inspection.
 
-The [2026-09-13 validation record](docs/experience.md) contains 16 passing local tests, both Mac smoke reports, image identity, screenshots and measurements. CI runs the local checks and builds the guest on arm64 Linux, retaining package and image metadata. Hosted CI does not establish the Mac desktop result.
+The [2026-09-13 validation record](docs/experience.md) contains 16 passing local tests, both Mac smoke reports, image identity, screenshots and measurements; the 2026-09-24 rendering change and its checks are recorded in the [assessment](docs/assessment.md#half-drawn-frames-revisited-2026-09-24-glfinish-instead-of-one-thread). CI runs the local checks and builds the guest on arm64 Linux, retaining package and image metadata. Hosted CI does not establish the Mac desktop result.
 
 ### Inspect and troubleshoot
 
@@ -245,6 +254,7 @@ The configured fallback currently remains the earlier 4.0.2 baseline. Follow the
 ## Current boundaries
 
 - Apple Silicon macOS is the supported desktop host. Hardware-accelerated rendering, cursor-only commits and multiple outputs remain future work.
+- Stopping a VM ends its applications. A runtime on microsandbox v0.7 that pauses the VM instead, keeping applications open, is in progress.
 - Guest autologin is enabled. Automatic guest locking and the screensaver are disabled; host screen locking still applies. Configure a guest password and Omarchy's idle plugin before enabling guest locking.
 - The guest time zone remains UTC by default.
 - The latest smoke checks confirm clipboard and input services. Audible output, fresh end-to-end Mac clipboard transfers and physical keyboard/trackpad feel were not rechecked in that validation pass.

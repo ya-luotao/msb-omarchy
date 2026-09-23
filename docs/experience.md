@@ -1,5 +1,7 @@
 # Desktop experience layer — 2026-09-13
 
+*Since 2026-09-24 the compositor no longer uses `LP_NUM_THREADS=0`; see the assessment, "Half-drawn frames, revisited". This record describes the image as validated on 2026-09-13.*
+
 The experience layer is implemented and verified locally on an Apple M3 Pro running macOS 27.0 (26A5425a). No Omarchy, Hyprland, Aquamarine or microsandbox source was changed.
 
 ## Delivered behavior
