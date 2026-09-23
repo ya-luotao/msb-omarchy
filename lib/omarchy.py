@@ -10,6 +10,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -117,6 +118,13 @@ class Desktop:
                         MSB_LIBKRUNFW_PATH=str(self.firmware), MSB_BACKEND="local")
 
     def check_runtime(self):
+        # The runtime puts its sockets in MSB_HOME/run/sandboxes/<24 hex>/ and
+        # refuses to start a VM when a path reaches sun_path's 104 bytes; the
+        # longest, control.sock, is 52 bytes past the state directory.
+        if len(str(self.state_dir).encode()) + 52 >= 104:
+            raise Error(f"The VM state directory path is too long for the runtime's sockets: "
+                        f"{self.state_dir}\nSet MSB_HOME to a directory path of at most 51 bytes, "
+                        "for example MSB_HOME=~/.msb-omarchy, or move the checkout to a shorter path.")
         if not self.binary.is_file():
             raise Error("Graphics runtime is not installed. Run bin/setup first.")
         result = execute([self.binary, "display", "--help"], env=self.env,
@@ -128,6 +136,46 @@ class Desktop:
                         "brew install slp/krun/virglrenderer molten-vk libepoxy")
         if not self.firmware.is_file():
             raise Error("Matching firmware is missing. Run bin/setup first.")
+        self.protect_state()
+
+    def protect_state(self):
+        """Back up the VM database before a different runtime first opens it.
+
+        A runtime migrates the database forward when it opens it, and older
+        runtimes then refuse it, so switching runtimes is one-way without a copy.
+        """
+        version = self.msb("--version", capture=True, timeout=10).stdout.strip()
+        marker = self.state_dir / "omarchy/runtime.json"
+        with lock(self.state_dir / "omarchy/runtime.lock"):
+            recorded = json.loads(marker.read_text()) if marker.exists() else {}
+            if recorded.get("version") == version:
+                return
+            database = self.state_dir / "db/msb.db"
+            if database.exists():
+                previous = Path(recorded.get("binary", ""))
+                if recorded and previous.is_file() and previous != self.binary:
+                    # Only the runtime that started a VM can stop it cleanly.
+                    listed = execute([previous, "list", "--format", "json"], capture=True, timeout=30,
+                                     env=dict(self.env, MSB_PATH=str(previous)))
+                    active = [item["name"] for item in json.loads(listed.stdout)
+                              if item["status"].lower() not in ("stopped", "crashed", "created")]
+                    if active:
+                        raise Error(f"VMs started by {recorded['version']} are still active: "
+                                    f"{', '.join(active)}. Stop them with that runtime first, e.g.\n"
+                                    f"  MSB={previous} bin/stop --name {active[0]}")
+                label = re.sub(r"[^A-Za-z0-9.-]+", "-", recorded.get("version", "unknown")).strip("-")
+                backup = self.state_dir / "db-backups" / f"{time.strftime('%Y%m%d-%H%M%S')}-{label}.db"
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                # The backup API copies a consistent database, WAL included.
+                with contextlib.closing(sqlite3.connect(database)) as source, \
+                        contextlib.closing(sqlite3.connect(backup)) as target:
+                    source.backup(target)
+                if recorded:
+                    say(f"Runtime changed from {recorded['version']} to {version}; "
+                        f"the previous VM database is saved as {backup}")
+                else:
+                    say(f"Saved the existing VM database as {backup} before {version} records its use")
+            write_json(marker, {"version": version, "binary": str(self.binary)})
 
     def msb(self, *args, capture=False, timeout=30, check=True, env=None):
         return execute([self.binary, *args], env=env or self.env, capture=capture,
@@ -221,6 +269,9 @@ class Desktop:
                     say(f"Starting {args.name} with its saved desktop"
                         f"{' after an unclean shutdown' if status == 'crashed' else ''}…")
                     self.msb("start", args.name, env=launch_env, timeout=120)
+                elif status == "paused":
+                    say(f"Resuming {args.name} where it was paused…")
+                    self.msb("resume", args.name, timeout=60)
                 elif status == "running":
                     say(f"Opening the running desktop {args.name}…")
                 else:
@@ -257,6 +308,36 @@ class Desktop:
             # Closing the window only ends the viewer; the VM remains running.
             os.execve(self.binary, [str(self.binary), "display", args.name], self.env)
 
+    def shut_down(self, existing):
+        """Stop a VM if it is live; msb refuses to stop a paused one."""
+        status = existing["status"].lower()
+        if status == "paused":
+            self.msb("resume", existing["name"], timeout=60)
+        if status in ("running", "paused"):
+            self.msb("stop", existing["name"], timeout=60)
+
+    def stop(self, args):
+        self.check_runtime()
+        with lock(self.metadata_path(args.name).with_suffix(".lock")):
+            existing = self.find(args.name)
+            if not existing:
+                raise Error(f"No VM named {args.name}.")
+            self.shut_down(existing)
+
+    def pause(self, args):
+        """Freeze a running VM in memory; bin/run resumes it with its applications."""
+        self.check_runtime()
+        with lock(self.metadata_path(args.name).with_suffix(".lock")):
+            existing = self.find(args.name)
+            status = existing["status"].lower() if existing else "missing"
+            if status == "paused":
+                say(f"{args.name} is already paused.")
+            elif status == "running":
+                self.msb("pause", args.name, timeout=60)
+                say(f"Paused {args.name}. Its memory stays allocated; bin/run resumes it.")
+            else:
+                raise Error(f"Only a running desktop can be paused; {args.name} is {status}.")
+
     def reset(self, args):
         if not args.yes:
             raise Error(f"Reset deletes {args.name}'s VM disk and settings. "
@@ -268,8 +349,7 @@ class Desktop:
             if existing:
                 if not metadata.exists():
                     raise Error("Refusing to reset a VM not created by bin/run.")
-                if existing["status"].lower() == "running":
-                    self.msb("stop", args.name, timeout=60)
+                self.shut_down(existing)
                 self.msb("remove", args.name, timeout=60)
             metadata.unlink(missing_ok=True)
         say(f"Reset {args.name}. Run bin/run to create a fresh desktop.")
@@ -291,7 +371,7 @@ def main(argv=None):
     run.add_argument("--timeout", type=float, default=90, help="Desktop readiness timeout in seconds")
     run.add_argument("--no-display", "-d", "--detach", action="store_true")
     run.add_argument("--display", action="store_true", help="Open a window, including with -d")
-    for command in ("stop", "reset"):
+    for command in ("stop", "pause", "reset"):
         sub = commands.add_parser(command)
         sub.add_argument("--name", default=os.environ.get("NAME", "omarchy"))
         if command == "reset":
@@ -311,9 +391,9 @@ def main(argv=None):
             raise Error("--timeout must be positive")
         desktop.run(args)
     elif args.command == "stop":
-        desktop.check_runtime()
-        with lock(desktop.metadata_path(args.name).with_suffix(".lock")):
-            desktop.msb("stop", args.name, timeout=60)
+        desktop.stop(args)
+    elif args.command == "pause":
+        desktop.pause(args)
     elif args.command == "reset":
         desktop.reset(args)
 

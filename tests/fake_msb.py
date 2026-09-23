@@ -14,7 +14,9 @@ with (state_dir / "calls.jsonl").open("a") as out:
     out.write(json.dumps({"args": args, "display": os.environ.get("MSB_GPU_DISPLAY"),
                           "config": os.environ["MSB_CONFIG_PATH"]}) + "\n")
 command = args[0]
-if command == "display":
+if command == "--version":
+    print(os.environ.get("FAKE_VERSION", "msb 0.0.1"))
+elif command == "display":
     print("display help")
 elif command == "list":
     if os.environ.get("FAKE_LIST_ERROR"):
@@ -27,7 +29,11 @@ elif command == "run":
     state[name] = {"name": name, "status": "Running", "image": args[args.index("--") - 1]}
     (state_dir / "guest-document").write_text("user work")
 elif command in ("start", "stop"):
+    if command == "stop" and state[args[1]]["status"] == "Paused":
+        sys.exit("cannot stop a paused sandbox")
     state[args[1]]["status"] = "Running" if command == "start" else "Stopped"
+elif command in ("pause", "resume"):
+    state[args[1]]["status"] = "Paused" if command == "pause" else "Running"
 elif command == "remove":
     del state[args[1]]
     (state_dir / "guest-document").unlink()

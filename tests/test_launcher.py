@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,8 @@ from omarchy import Desktop, Error, download, lock
 
 class LauncherTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        # Short, like a real state directory: the runtime's socket paths must fit in 104 bytes.
+        self.temp = tempfile.TemporaryDirectory(dir="/tmp")
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name).resolve()
         self.state = self.directory / "desktop state"
@@ -81,6 +83,37 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(len(self.calls("run")), 1)
         self.assertFalse(self.calls("remove"))
 
+    def test_paused_vm_resumes_with_its_applications(self):
+        self.start()
+        self.invoke("pause")
+        result = self.start()
+        self.assertIn("where it was paused", result.stderr)
+        self.assertEqual(len(self.calls("resume")), 1)
+        self.assertFalse(self.calls("start"))
+        self.assertEqual(len(self.calls("run")), 1)
+
+    def test_paused_vm_can_be_stopped_and_reset(self):
+        self.start()
+        self.invoke("pause")
+        self.invoke("stop")
+        self.start()
+        self.invoke("pause")
+        self.invoke("reset", "--yes")
+        self.assertEqual(len(self.calls("remove")), 1)
+
+    def test_only_a_running_vm_can_be_paused(self):
+        self.start()
+        self.invoke("stop")
+        result = self.invoke("pause", success=False)
+        self.assertIn("Only a running desktop", result.stderr)
+        self.assertFalse(self.calls("pause"))
+
+    def test_state_path_too_long_for_sockets_is_rejected_before_msb_runs(self):
+        long_state = self.directory / ("x" * (60 - len(str(self.directory))))
+        result = self.start(success=False, MSB_HOME=str(long_state))
+        self.assertIn("too long", result.stderr)
+        self.assertFalse(self.calls())
+
     def test_database_failure_does_not_create_or_remove(self):
         self.start(success=False, FAKE_LIST_ERROR="1")
         self.assertFalse(self.calls("run"))
@@ -140,6 +173,52 @@ class LauncherTests(unittest.TestCase):
         with lock(path):
             self.start(success=False)
         self.assertFalse(self.calls("run"))
+
+    def make_database(self, rows):
+        (self.state / "db").mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.state / "db/msb.db") as db:
+            db.execute("create table sandbox (name text)")
+            db.executemany("insert into sandbox values (?)", [(row,) for row in rows])
+
+    def backups(self):
+        return sorted((self.state / "db-backups").glob("*.db")) if (self.state / "db-backups").exists() else []
+
+    def new_runtime(self):
+        """A second installed runtime, as a pinned upgrade would add."""
+        binary = self.directory / "newer runtime"
+        shutil.copyfile(ROOT / "tests/fake_msb.py", binary)
+        binary.chmod(0o755)
+        return {"MSB": str(binary), "FAKE_VERSION": "msb 0.0.2"}
+
+    def test_unrecorded_database_is_backed_up_before_first_use(self):
+        self.make_database(["omarchy"])
+        self.start()
+        self.start()
+        self.assertEqual(len(self.backups()), 1)
+        self.assertIn("unknown", self.backups()[0].name)
+
+    def test_runtime_change_backs_up_database_once(self):
+        self.start()
+        self.invoke("stop")
+        self.make_database(["omarchy"])
+        self.start(**self.new_runtime())
+        self.start(**self.new_runtime())
+        backups = self.backups()
+        self.assertEqual(len(backups), 1)
+        self.assertIn("msb-0.0.1", backups[0].name)
+        with sqlite3.connect(backups[0]) as db:
+            self.assertEqual(db.execute("select name from sandbox").fetchall(), [("omarchy",)])
+
+    def test_runtime_change_refuses_while_previous_runtime_has_active_vms(self):
+        self.start()
+        self.make_database(["omarchy"])
+        result = self.start(success=False, **self.new_runtime())
+        self.assertIn("still active", result.stderr)
+        self.assertIn("bin/stop --name omarchy", result.stderr)
+        self.assertEqual(self.backups(), [])
+        self.invoke("stop")
+        self.start(**self.new_runtime())
+        self.assertEqual(len(self.backups()), 1)
 
     def test_failed_checksum_keeps_previously_downloaded_file(self):
         archive = self.directory / "download.tar.gz"
