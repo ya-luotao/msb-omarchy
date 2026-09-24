@@ -186,7 +186,7 @@ These settings apply when creating a VM. `--name` and `--profile` take precedenc
 | `ROOT_DISK` | `16G` | Writable guest disk capacity |
 | `SHARED_DIR` | Checkout's `Shared/` | Directory shared with the guest |
 | `VNC_PORT` | `5901` | Loopback VNC port on the Mac |
-| `TAG` | Last successfully built and loaded image, otherwise the pinned baseline | Image for a new VM; also overrides the build tag |
+| `TAG` | Last successfully built and loaded image, otherwise the published image pinned in `config/release.json` | Image for a new VM; also overrides the build tag |
 | `MSB_GPU_DISPLAY` | Profile resolution | Advanced output-size override, e.g. `1600x900` |
 
 Advanced runtime overrides are `MSB` for the binary, `MSB_LIBKRUNFW_PATH` for firmware and `MSB_HOME` for state. The default state directory is `.runtime/home/`. The project explicitly selects its own configuration file, so global microsandbox configuration is not inherited.
