@@ -22,7 +22,7 @@ The project combines a pinned graphics runtime with an Arch Linux ARM guest imag
 - **An isolated runtime.** Checksummed runtime and firmware downloads, with project-local VM state independent of a global microsandbox installation.
 - **Recorded validation.** Launcher and release tests, guest image checks, Mac smoke tests, screenshots and measurements tied to the tested image.
 
-**Status:** experimental desktop integration for Apple Silicon. The current guest recipe passed both display-profile smoke tests on a Mac on 2026-09-24. The latest experience layer must be built locally; the configured prebuilt fallback is the earlier Omarchy 4.0.2 baseline. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
+**Status:** experimental desktop integration for Apple Silicon. The published guest image `msb-omarchy:4.0.2-2` passed both display-profile smoke tests and the frame check on a Mac on 2026-09-24, and new desktops use it by default. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
 
 ## Quick start
 
@@ -32,11 +32,11 @@ The project combines a pinned graphics runtime with an Arch Linux ARM guest imag
 | --- | --- |
 | Host | Apple Silicon Mac with Hypervisor.framework support |
 | Tools | Git, Python 3.9+, Homebrew and the macOS `curl` / `codesign` commands |
-| Image build | A running Docker engine capable of building `linux/arm64` images |
+| Image build (optional) | A running Docker engine capable of building `linux/arm64` images, only to build the guest image yourself |
 | Host libraries | `slp/krun/virglrenderer`, `molten-vk` and `libepoxy` |
 | Storage | Space for Docker layers, the runtime cache and each VM's writable disk |
 
-Each VM defaults to **4 vCPUs, 4G RAM and a 16G writable disk**. Docker is used to build and load the image; the desktop itself runs through microsandbox and macOS virtualization.
+Each VM defaults to **4 vCPUs, 4G RAM and a 16G writable disk**. The desktop runs through microsandbox and macOS virtualization; Docker is only needed to build the image yourself.
 
 Keep the checkout at a short path: the runtime's socket paths must fit in 104 bytes, which limits the state directory (`<checkout>/.runtime/home` by default) to 51 bytes. `bin/run` reports a longer one; set `MSB_HOME` to a shorter directory, such as `~/.msb-omarchy`, before creating desktops.
 
@@ -50,13 +50,12 @@ brew install slp/krun/virglrenderer molten-vk libepoxy
 
 bin/setup          # Download and verify the pinned runtime and firmware
 bin/doctor         # Check the selected runtime and host support
-bin/build-rootfs   # Build, validate and load the guest image
 bin/run            # Create the desktop and open its native window
 ```
 
-Setup and image building are first-time steps. Afterward, use **`bin/run`** to return to the desktop. The launcher waits for the desktop shell to respond before opening the window.
+The first `bin/run` downloads the published guest image (about 6 GB). Afterward, use **`bin/run`** to return to the desktop. The launcher waits for the desktop shell to respond before opening the window.
 
-A successfully checked and loaded image becomes this checkout's default for **new** VMs. Existing VMs retain their disk and settings. Skipping `bin/build-rootfs` uses the pinned, published 4.0.2 baseline, which does not contain the applications and desktop refinements shown above.
+To build the image yourself instead, run `bin/build-rootfs` before `bin/run` (see [building and publishing](#building-and-publishing)). A successfully checked and loaded image becomes this checkout's default for **new** VMs. Existing VMs retain their disk and settings.
 
 ## Daily use
 
@@ -256,7 +255,7 @@ bin/publish
 
 Publication tags the exact tested local image ID and pushes it without rebuilding. A changed image or missing profile evidence blocks publication. Promoting a release for fresh checkouts is a separate step: update the `image` field in `config/release.json` to the published immutable digest.
 
-The configured fallback currently remains the earlier 4.0.2 baseline. Follow the full quick start to obtain the current experience layer.
+`config/release.json` currently points fresh checkouts at `msb-omarchy:4.0.2-2` (`ghcr.io/ya-luotao/msb-omarchy@sha256:2e8c76dfc466…`), published on 2026-09-24 from commit 36a45f8 after both smoke profiles and the frame check passed on that exact image.
 
 ## Current boundaries
 

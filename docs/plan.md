@@ -59,7 +59,7 @@ Done 2026-08-30 except upstreaming. Run: `MSB=<gpu-m3 build> bin/run -d --displa
 - [x] Checked image layering on the immutable 4.0.2 base, with graphics package versions retained.
 - [x] 16 local tests, both Mac smoke profiles, actual input/screenshots and pointer measurements.
 - [x] Configure arm64 image CI and an exact-image publication gate.
-- [ ] Publish the tested image and promote its immutable digest for fresh checkouts.
+- [x] Publish the tested image and promote its immutable digest for fresh checkouts (done in M5 with 4.0.2-2).
 
 Evidence and remaining manual checks: [experience validation](experience.md).
 
@@ -69,7 +69,7 @@ Evidence and remaining manual checks: [experience validation](experience.md).
 - [x] Record the upstream status (assessment); hypr* no longer accepts this project's contributions, so compositor fixes are carried here
 - [x] Replace `LP_NUM_THREADS=0` with a compositor-only `glFlush`→`glFinish` shim: no half-drawn frames with four llvmpipe threads, about twice the full-window redraw rate (assessment, "Half-drawn frames, revisited"); `bin/frame-check` and `bin/measure-display --redraw`
 - [x] Super+Enter opens a terminal again: Omarchy's launcher calls `xdg-terminal-exec --dir=…`, which the foot wrapper passed on and foot rejected; smoke now launches the terminal through that launcher
-- [ ] Mac smoke for both profiles on an image built from a clean commit, then publish it
+- [x] Mac smoke for both profiles and the frame check on an image built from a clean commit (36a45f8), then publish it: `msb-omarchy:4.0.2-2`, promoted in `config/release.json`
 - [x] Runtime on microsandbox v0.7.x, spike: resident pause/resume keeps the desktop with display, input and sound attached; checkpoints need device quiesce and a PID 1 freezer (assessment, "Runtime on microsandbox v0.7.2")
 - [x] Runtime on microsandbox v0.7.2: fork release [v0.7.2-gpu-m4.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) (branch `gpu-m4`, `msb run --display` ported, SDK 14.5 recorded at link time); `bin/pause`, paused VMs resumed by `bin/run`; database backup and refusal while old VMs are active when the runtime changes; both smoke profiles and `bin/frame-check` pass on it, and this Mac's state was migrated
 
