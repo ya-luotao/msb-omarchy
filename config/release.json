@@ -9,7 +9,7 @@
     "sha256": "43e36ee2b1f2a7488c25f34193f657568a7733281d856ad267506ccc02993d59"
   },
   "image": "ghcr.io/ya-luotao/msb-omarchy@sha256:c53f79040e445f18e8e007b20a0af9756cf6e61d71a5321543470caaeac6290d",
-  "build_tag": "msb-omarchy:4.0.2-1",
+  "build_tag": "msb-omarchy:4.0.2-2",
   "omarchy_commit": "346e69e1cec6c4e8924531874af6ba010a1bc99e",
   "omarchy_pkgs_commit": "48e60a6539266accaeb866d6ef6cd2da4aed00e9",
   "base_image": "ghcr.io/ya-luotao/msb-omarchy@sha256:c53f79040e445f18e8e007b20a0af9756cf6e61d71a5321543470caaeac6290d"

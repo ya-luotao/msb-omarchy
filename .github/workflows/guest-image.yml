@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  packages: read  # the private base image on GHCR
+  packages: read  # pull the base image from GHCR
 
 jobs:
   launcher:
