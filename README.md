@@ -1,18 +1,33 @@
 # msb-omarchy
 
-**An Omarchy desktop on your Apple Silicon Mac.**
+**An unofficial testbed for display and GPU support in microsandbox on Apple Silicon.**
 
-msb-omarchy runs [Omarchy](https://omarchy.org)'s Hyprland + Quattro desktop inside a [microsandbox](https://github.com/superradcompany/microsandbox) Linux microVM, with a native macOS window, persistent guest storage and a directory shared with your Mac.
+[microsandbox](https://github.com/superradcompany/microsandbox) runs Linux microVMs, but has no display path. This project carries one in a fork of its runtime: a 2D virtio-gpu scanout shown in a native macOS window, virtio-input, a text clipboard over vsock and virtio-snd through CoreAudio. The workload is a full [Omarchy](https://omarchy.org) desktop (Hyprland + Quattro), because a real compositor finds problems a test pattern does not. What the project finds, measures and fixes is recorded so that others, microsandbox's maintainers included, can reuse it.
 
-The project combines a pinned graphics runtime with an Arch Linux ARM guest image and a small set of host commands. Desktop configuration, application defaults and lifecycle management live in this repository; using them requires no upstream source changes.
+**Where GPU support stands.** The guest renders with Mesa's llvmpipe on the CPU, and virtio-gpu carries finished frames to the host. Nothing is hardware-accelerated yet. Venus, which runs guest Vulkan on the Mac's GPU through MoltenVK, is the next experiment ([M7](docs/plan.md#m7--venus-on-hvf-graphics-not-only-compute)).
 
-[Quick start](#quick-start) · [Daily use](#daily-use) · [Configuration](#configuration) · [Validation](#validation) · [Architecture](#architecture)
+**Not affiliated.** This is an independent project. It is not affiliated with or endorsed by the microsandbox, libkrun, Omarchy or Hyprland projects.
+
+[Findings](#findings) · [Quick start](#quick-start) · [Daily use](#daily-use) · [Configuration](#configuration) · [Validation](#validation) · [Architecture](#architecture)
 
 ![Omarchy desktop with Chinese input and files shared with macOS](docs/images/m4-desktop.png)
 
 *An actual guest screenshot: Foot with Pinyin input, Nautilus and the shared directory.*
 
-## What you get
+## Findings
+
+The [findings index](docs/findings.md) lists what this project has learned, by layer: host devices, guest kernel, Mesa and Hyprland, macOS and the microsandbox CLI. Each entry gives the cause, the fix or workaround, the evidence and the upstream status. Some that matter beyond this project:
+
+- With `NO_VIRGL`, the virtio-gpu device rejects every 2D command on macOS, so the host never receives a frame; the fork adds a 2D-only mode (D1).
+- Hyprland decides whether to wait for rendering from the DRM driver name, so on virtio-gpu it scans out half-drawn llvmpipe frames. A small `glFlush`→`glFinish` shim fixes it and keeps llvmpipe's threads (G2).
+- A desktop VM can be paused and resumed in about 30 ms, but not checkpointed: virtio-gpu and virtio-snd cannot quiesce (D8).
+- `msb` built locally against the macOS 27 SDK cannot take HVF checkpoints (M1).
+
+**Upstream.** The display changes were proposed to microsandbox and msb_krun in August 2026 and withdrawn unreviewed on 2026-09-23: as one change they were too large to review and had fallen far behind. microsandbox's maintainers have GPU work in progress internally ([#291](https://github.com/superradcompany/microsandbox/issues/291)) and prefer small, separate pull requests. The fork is therefore kept here as a test vehicle rather than proposed as a whole; the findings that stand alone are the ones worth reporting upstream. See the [upstream status](docs/assessment.md#upstream-status).
+
+## The workload: an Omarchy desktop
+
+The desktop is a complete, persistent environment, usable day to day:
 
 - **A persistent desktop.** Create a VM once, close and reopen its window, or stop and resume it with files and settings preserved.
 - **Native Mac integration.** The graphics runtime provides a macOS display window, keyboard and pointer input, text clipboard synchronization and audio output.
@@ -22,7 +37,7 @@ The project combines a pinned graphics runtime with an Arch Linux ARM guest imag
 - **An isolated runtime.** Checksummed runtime and firmware downloads, with project-local VM state independent of a global microsandbox installation.
 - **Recorded validation.** Launcher and release tests, guest image checks, Mac smoke tests, screenshots and measurements tied to the tested image.
 
-**Status:** experimental desktop integration for Apple Silicon. The published guest image `msb-omarchy:4.0.2-2` passed both display-profile smoke tests and the frame check on a Mac on 2026-09-24, and new desktops use it by default. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
+**Status:** experimental. The published guest image `msb-omarchy:4.0.2-2` passed both display-profile smoke tests and the frame check on a Mac on 2026-09-24, and new desktops use it by default. See [validation](#validation) and [current boundaries](#current-boundaries) for the scope of those results.
 
 ## Quick start
 
@@ -171,7 +186,7 @@ The host runtime boots the guest using macOS virtualization. The guest renders t
 
 The image recipe adds this repository's applications and configuration to an immutable Omarchy 4.0.2 base. Before and after installing packages, it verifies that Hyprland, Aquamarine, Mesa, Quickshell and Qt base remain at their original versions.
 
-`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the [gpu-m4 graphics build](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) of microsandbox 0.7.2; a stock global microsandbox binary does not include its display command. Its changes were proposed to microsandbox and its VMM (libkrun) in August 2026 and have not been reviewed, so this project maintains the fork; the [upstream status](docs/assessment.md#upstream-status-2026-09-24) records where each piece stands.
+`config/release.json` pins the base-image digest, graphics runtime checksum and matching firmware checksum. The runtime is the [gpu-m4 graphics build](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) of microsandbox 0.7.2; a stock global microsandbox binary does not include its display command. Its changes are not in microsandbox or msb_krun: the upstream proposals were withdrawn unreviewed (see [Findings](#findings)), and the [upstream status](docs/assessment.md#upstream-status) records where each piece stands.
 
 ## Configuration
 
@@ -259,7 +274,8 @@ Publication tags the exact tested local image ID and pushes it without rebuildin
 
 ## Current boundaries
 
-- Apple Silicon macOS is the supported desktop host. Hardware-accelerated rendering, cursor-only commits and multiple outputs remain future work.
+- Apple Silicon macOS is the supported desktop host.
+- Rendering is software only (llvmpipe). GPU acceleration through Venus is an open experiment ([M7](docs/plan.md#m7--venus-on-hvf-graphics-not-only-compute)); cursor-only commits and multiple outputs remain future work.
 - A paused VM keeps its memory allocated and does not survive a Mac restart; its applications are gone after one. Saving a running desktop to disk is not possible yet: the virtio-gpu and sound devices cannot quiesce for a checkpoint, and the runtime cannot freeze a systemd-managed guest. While paused, the guest clock keeps running, so timers treat a long pause as elapsed time.
 - Guest autologin is enabled. Automatic guest locking and the screensaver are disabled; host screen locking still applies. Configure a guest password and Omarchy's idle plugin before enabling guest locking.
 - The guest time zone remains UTC by default.
@@ -275,10 +291,10 @@ Publication tags the exact tested local image ID and pushes it without rebuildin
 | `guest/Dockerfile` | Image build and graphics-package preservation checks |
 | `guest/overlay/` | Guest configuration, applications' defaults and integration helpers |
 | `tests/` | Launcher and publication-gate tests |
-| `docs/` | Milestones, experiments, screenshots and recorded validation |
+| `docs/` | Findings, milestones, experiments, screenshots and recorded validation |
 | `.runtime/`, `Shared/`, `build/`, `test-runs/` | Local runtime state, shared files and generated artifacts; ignored by Git |
 
-Further reading: [milestones](docs/plan.md), [graphics experiments](docs/assessment.md), [desktop validation](docs/experience.md) and the [unused Aquamarine cursor-plane patch](guest/pkgbuilds/aquamarine/README.md). The original full Arch bootstrap recipe remains in the Git history.
+Further reading: [findings](docs/findings.md), [milestones](docs/plan.md), [graphics experiments](docs/assessment.md), [desktop validation](docs/experience.md) and the [unused Aquamarine cursor-plane patch](guest/pkgbuilds/aquamarine/README.md). The original full Arch bootstrap recipe remains in the Git history.
 
 This project complements [omarchy-microsandbox](https://github.com/ya-luotao/omarchy-microsandbox), the Omarchy plugin for managing VMs. Here, the Omarchy desktop itself runs inside the VM.
 

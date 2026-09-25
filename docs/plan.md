@@ -73,6 +73,29 @@ Evidence and remaining manual checks: [experience validation](experience.md).
 - [x] Runtime on microsandbox v0.7.x, spike: resident pause/resume keeps the desktop with display, input and sound attached; checkpoints need device quiesce and a PID 1 freezer (assessment, "Runtime on microsandbox v0.7.2")
 - [x] Runtime on microsandbox v0.7.2: fork release [v0.7.2-gpu-m4.1](https://github.com/ya-luotao/microsandbox/releases/tag/v0.7.2-gpu-m4.1) (branch `gpu-m4`, `msb run --display` ported, SDK 14.5 recorded at link time); `bin/pause`, paused VMs resumed by `bin/run`; database backup and refusal while old VMs are active when the runtime changes; both smoke profiles and `bin/frame-check` pass on it, and this Mac's state was migrated
 
+## M6 — a testbed others can use (2026-09-26)
+
+The upstream pull requests were withdrawn unreviewed on 2026-09-23, and microsandbox has GPU work in progress internally ([#291](https://github.com/superradcompany/microsandbox/issues/291)). This repository's value is therefore what it has found and measured, not a fork to adopt.
+
+- [x] Correct the upstream status: the fork carries every change; nothing is under review (assessment, "Upstream status")
+- [x] Index the findings by layer, with cause, evidence and upstream disposition ([findings](findings.md))
+- [x] Lead the README with the scope: a display path over a 2D virtio-gpu, software rendering, no GPU acceleration yet
+- [ ] Report the standalone findings upstream as small issues, one per finding, where maintainers can take them without the display work
+- [ ] Compare frame rates on the 0.6.16 and 0.7.2 runtimes on a quiet host; the 0.7.2 numbers so far were taken under load
+
+## M7 — Venus on HVF: graphics, not only compute
+
+Goal: find out whether guest rendering can move from llvmpipe to the Mac's GPU through Venus (guest Mesa Venus → virtio-gpu → virglrenderer → MoltenVK → Metal), and what it costs to get those frames onto the display.
+
+Known before starting: the runtime already has `MSB_GPU=venus` (`NO_VIRGL | VENUS`), which initializes without host errors (assessment, M0) but was never exercised; `msb run --display` forces `MSB_GPU=1`. libkrun [#91](https://github.com/superradcompany/libkrun/pull/91) shows Venus compute working in a microsandbox VM on an M4 Pro once blob mappings are rounded to the 16 KiB host page; its `vulkaninfo` and llama.cpp results cover compute, not presentation. With `VENUS` the device builds the virglrenderer component rather than `Rutabaga2D`, so the 2D scanout that M2 depends on is expected to fail again as it did in M0.
+
+- [ ] Reproduce #91 on the fork: apply the page rounding to the vendored `msb_krun_devices`, boot a minimal probe guest (Arch Linux ARM with Mesa's Venus driver and `vulkan-tools`, no desktop), and check that `vulkaninfo` names the Apple GPU and that an offscreen render and a compute workload give correct output
+- [ ] Measure one offscreen rendering workload on Venus against lavapipe/llvmpipe in the same guest
+- [ ] Display and Venus in one VM: let `--display` keep `MSB_GPU=venus`; record whether dumb-buffer scanout still works, and if not, serve 2D resources next to Venus contexts in the device
+- [ ] Clients on Venus, compositor on llvmpipe: a Vulkan (or Zink) client in the desktop — does its buffer reach the compositor, through which path, and at what copy cost
+- [ ] Compositor on Venus through Zink: can aquamarine allocate and scan out its buffers, and how do `bin/measure-display` and `bin/frame-check` compare with the llvmpipe compositor
+- [ ] Record each step in the findings, including negative results; a precise "does not work because" is a result
+
 ## Later
 
 - Cursor-only commits in Hyprland/aquamarine, so a hardware cursor stops costing a frame per move (see assessment); the host side and the aquamarine plane patch are already done, but hypr* upstream does not take contributions from this project, so the compositor side would have to be carried locally
